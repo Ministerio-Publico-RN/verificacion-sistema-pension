@@ -46,7 +46,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             self.send_json({'status': 'ok', 'app': 'MPFN Verificación Previsional', 'version': '1.0.0'})
         elif path == '/api/sbs/config':
             sbs = get_sbs_service()
-            self.send_json({'concurrency': sbs.get_concurrency()})
+            self.send_json(sbs.get_config())
         elif path == '/api/load-sample':
             self.handle_load_sample()
         elif path == '/api/afpnet/download-template':
@@ -85,15 +85,16 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             self.send_error(404, "Endpoint no encontrado")
 
     def handle_sbs_set_config(self):
-        """Actualiza la concurrencia de navegadores Playwright en el pool"""
+        """Actualiza la velocidad y modo de visibilidad del navegador Playwright"""
         try:
             content_length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(content_length).decode('utf-8')
             params = json.loads(body)
-            concurrency = int(params.get('concurrency', 1))
+            concurrency = params.get('concurrency')
+            headless = params.get('headless')
             sbs = get_sbs_service()
-            new_val = sbs.set_concurrency(concurrency)
-            self.send_json({'success': True, 'concurrency': new_val})
+            res = sbs.set_config(concurrency=concurrency, headless=headless)
+            self.send_json({'success': True, **res})
         except Exception as e:
             self.send_json({'error': str(e)}, status=500)
 

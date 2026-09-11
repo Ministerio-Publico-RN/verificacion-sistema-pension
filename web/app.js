@@ -763,15 +763,21 @@ document.addEventListener('DOMContentLoaded', () => {
     verificationTimer.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   }
 
-  // Configuración de Scraping (Modal y Concurrencia)
+  // Configuración de Consulta SBS (Modal Simplificado para Usuario Administrativo)
   function initScrapingConfig() {
+    const cfgVisibleBrowser = document.getElementById('cfgVisibleBrowser');
+
     fetch('/api/sbs/config')
       .then(r => r.json())
       .then(d => {
         if (d.concurrency) {
           state.scrapingConfig.concurrency = d.concurrency;
-          const r = document.querySelector(`input[name="concurrencyRadio"][value="${d.concurrency}"]`);
+          const r = document.querySelector(`input[name="speedRadio"][value="${d.concurrency}"]`);
           if (r) r.checked = true;
+        }
+        if (d.headless !== undefined) {
+          state.scrapingConfig.headless = d.headless;
+          if (cfgVisibleBrowser) cfgVisibleBrowser.checked = !d.headless;
         }
       })
       .catch(() => {});
@@ -788,18 +794,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (btnSaveConfig) {
       btnSaveConfig.addEventListener('click', async () => {
-        const selectedRadio = document.querySelector('input[name="concurrencyRadio"]:checked');
+        const selectedRadio = document.querySelector('input[name="speedRadio"]:checked');
         const conc = selectedRadio ? parseInt(selectedRadio.value) : 1;
-        const delay = cfgDelay ? parseInt(cfgDelay.value) : 1200;
+        const isVisible = cfgVisibleBrowser ? cfgVisibleBrowser.checked : true;
+        const headless = !isVisible;
 
         state.scrapingConfig.concurrency = conc;
-        state.scrapingConfig.delayMs = delay;
+        state.scrapingConfig.headless = headless;
+        state.scrapingConfig.delayMs = conc === 2 ? 800 : 1200;
 
         try {
           await fetch('/api/sbs/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ concurrency: conc })
+            body: JSON.stringify({ concurrency: conc, headless: headless })
           });
         } catch (e) {
           console.warn('Error al guardar configuración en servidor:', e);
@@ -1147,7 +1155,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!sbs) {
       modalVerdictBox.classList.add('verdict-naranja');
-      modalVerdictIcon.textContent = '⏳';
+      modalVerdictIcon.textContent = '•';
       modalVerdictTitle.textContent = 'Consulta pendiente de ejecución';
       modalVerdictDesc.textContent = 'Pulse el botón "Reconsultar SBS" para validar la afiliación de este trabajador.';
       return;
@@ -1155,7 +1163,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (sbs.afp === 'VENTANA CERRADA') {
       modalVerdictBox.classList.add('verdict-naranja');
-      modalVerdictIcon.textContent = '🪟';
+      modalVerdictIcon.textContent = '•';
       modalVerdictTitle.textContent = 'Ventana del navegador cerrada';
       modalVerdictDesc.textContent = 'La ventana de navegación fue cerrada. Al pulsar "Reconsultar SBS" el sistema la reabrirá automáticamente para consultar los datos.';
       return;
@@ -1163,12 +1171,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (worker.semaforo === 'coincidente') {
       modalVerdictBox.classList.add('verdict-verde');
-      modalVerdictIcon.textContent = '✅';
+      modalVerdictIcon.textContent = '✓';
       modalVerdictTitle.textContent = `Acreditación conforme: afiliado a ${sbs.afp}`;
       modalVerdictDesc.textContent = `Los registros del SIGA y la Superintendencia (SBS) coinciden plenamente. Se autoriza la retención y abono legal correspondiente a ${sbs.afp} bajo el CUSPP ${sbs.cuspp}.`;
     } else if (worker.semaforo === 'discrepancia') {
       modalVerdictBox.classList.add('verdict-rojo');
-      modalVerdictIcon.textContent = '⚠️';
+      modalVerdictIcon.textContent = '!';
       modalVerdictTitle.textContent = 'Discrepancia previsional detectada';
       if (siga.includes('ONP') && sbs.afiliado_spp) {
         modalVerdictDesc.textContent = `Alerta de retención: En el SIGA figura registrado como SNP (ONP), pero la SBS certifica formalmente afiliación a ${sbs.afp}. Acción requerida: Corregir en SIGA y abonar a ${sbs.afp} para evitar contingencias legales o multas.`;
@@ -1177,13 +1185,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } else if (worker.semaforo === 'latencia' || worker.semaforo === 'error') {
       modalVerdictBox.classList.add('verdict-naranja');
-      modalVerdictIcon.textContent = '⏱️';
+      modalVerdictIcon.textContent = '!';
       modalVerdictTitle.textContent = 'Tiempo de respuesta agotado en la SBS';
       modalVerdictDesc.textContent = 'El portal de la SBS demoró en responder. Utilice el botón "Reconsultar SBS" a continuación para reintentar.';
     } else {
       // sin_afiliacion
       modalVerdictBox.classList.add('verdict-azul');
-      modalVerdictIcon.textContent = 'ℹ️';
+      modalVerdictIcon.textContent = 'i';
       modalVerdictTitle.textContent = 'Trabajador no registrado en AFP (posible ONP o nuevo ingreso)';
       modalVerdictDesc.textContent = 'La SBS certifica que este trabajador no figura en el Sistema Privado (SPP). Verifique con AFPNET o proceda a su primera afiliación institucional.';
     }
@@ -1265,7 +1273,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Si el botón es para reintentar (por latencia o error), reintenta directo
     if (worker.semaforo === 'latencia' || worker.semaforo === 'error') {
       btn.disabled = true;
-      btn.innerHTML = `<span class="spin">⟳</span>`;
+      btn.innerHTML = `<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="12"></circle></svg>`;
       try {
         const response = await fetch('/api/sbs/verify-worker', {
           method: 'POST',
@@ -1368,15 +1376,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const res = await response.json();
         if (res.success && res.data) {
           const matched = mergeAfpnetResults(res.data);
-          afpnetResultStatus.innerHTML = `<span style="color: #166534;">✅ ${matched} trabajadores cruzados y actualizados con éxito desde el archivo oficial de AFPNET.</span>`;
+          afpnetResultStatus.innerHTML = `<span style="color: #166534;">${matched} trabajadores cruzados y actualizados con éxito desde el archivo oficial de AFPNET.</span>`;
         } else {
-          afpnetResultStatus.innerHTML = `<span style="color: #991B1B;">❌ Error: ${res.error || 'No se pudo procesar el archivo.'}</span>`;
+          afpnetResultStatus.innerHTML = `<span style="color: #991B1B;">Error: ${res.error || 'No se pudo procesar el archivo.'}</span>`;
         }
       } catch (err) {
-        afpnetResultStatus.innerHTML = `<span style="color: #991B1B;">❌ Error de conexión: ${err.message}</span>`;
+        afpnetResultStatus.innerHTML = `<span style="color: #991B1B;">Error de conexión: ${err.message}</span>`;
       } finally {
         btnLoadAfpnetSampleResult.disabled = false;
-        btnLoadAfpnetSampleResult.textContent = '⚡ Cargar Archivo de Prueba Oficial (docs/archivos_pruebas/res_prueba_1_consultaCUSPPMasiva.xlsx)';
+        btnLoadAfpnetSampleResult.textContent = 'Cargar archivo de prueba oficial (docs/archivos_pruebas/res_prueba_1_consultaCUSPPMasiva.xlsx)';
       }
     });
   }
@@ -1413,7 +1421,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function uploadAfpnetResultFile(file) {
-    afpnetResultStatus.innerHTML = `<span style="color: #0B2F64;">⏳ Procesando archivo ${file.name}...</span>`;
+    afpnetResultStatus.innerHTML = `<span style="color: #0B2F64;">Procesando archivo ${file.name}...</span>`;
     const formData = new FormData();
     formData.append('file', file);
 
@@ -1425,12 +1433,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await response.json();
       if (res.success && res.data) {
         const matched = mergeAfpnetResults(res.data);
-        afpnetResultStatus.innerHTML = `<span style="color: #166534;">✅ ${matched} trabajadores cruzados con éxito desde ${file.name}.</span>`;
+        afpnetResultStatus.innerHTML = `<span style="color: #166534;">${matched} trabajadores cruzados con éxito desde ${file.name}.</span>`;
       } else {
-        afpnetResultStatus.innerHTML = `<span style="color: #991B1B;">❌ Error: ${res.error || 'Archivo inválido.'}</span>`;
+        afpnetResultStatus.innerHTML = `<span style="color: #991B1B;">Error: ${res.error || 'Archivo inválido.'}</span>`;
       }
     } catch (err) {
-      afpnetResultStatus.innerHTML = `<span style="color: #991B1B;">❌ Error al subir: ${err.message}</span>`;
+      afpnetResultStatus.innerHTML = `<span style="color: #991B1B;">Error al subir: ${err.message}</span>`;
     }
   }
 
@@ -1452,7 +1460,7 @@ document.addEventListener('DOMContentLoaded', () => {
         alert('Error: ' + err.message);
       } finally {
         btnAfpnetOpenBrowser.disabled = false;
-        btnAfpnetOpenBrowser.textContent = '🌐 Abrir Ventana con Credenciales Pre-Cargadas';
+        btnAfpnetOpenBrowser.textContent = 'Abrir ventana con credenciales precargadas';
       }
     });
   }
@@ -1475,7 +1483,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         const data = await res.json();
         if (data.logged_in) {
-          alert('¡Sesión iniciada con éxito! Navegando a Consulta de Afiliados Masiva.');
+          alert('Sesión iniciada con éxito. Navegando a Consulta de Afiliados Masiva.');
         } else {
           alert(data.mensaje || 'Error al validar captcha o credenciales.');
         }
@@ -1483,7 +1491,7 @@ document.addEventListener('DOMContentLoaded', () => {
         alert('Error: ' + err.message);
       } finally {
         btnAfpnetSubmitLogin.disabled = false;
-        btnAfpnetSubmitLogin.textContent = 'Ingresar y Navegar a Consulta Masiva';
+        btnAfpnetSubmitLogin.textContent = 'Ingresar y navegar a consulta masiva';
       }
     });
   }

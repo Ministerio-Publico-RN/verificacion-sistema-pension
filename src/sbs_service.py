@@ -20,10 +20,11 @@ WINDOW_POSITIONS = [
 ]
 
 class SBSWorkerThread(threading.Thread):
-    def __init__(self, worker_id, task_queue):
+    def __init__(self, worker_id, task_queue, manager=None):
         super().__init__(daemon=True)
         self.worker_id = worker_id
         self.task_queue = task_queue
+        self.manager = manager
         self.running = True
         self.interrupted = False
         self.playwright = None
@@ -32,8 +33,16 @@ class SBSWorkerThread(threading.Thread):
         self.page = None
         self.is_ready = False
 
-    def init_browser(self, headless=False):
+    def get_headless(self):
+        if self.manager and hasattr(self.manager, 'headless'):
+            return bool(self.manager.headless)
+        return False
+
+    def init_browser(self, headless=None):
         try:
+            if headless is None:
+                headless = self.get_headless()
+
             if not self.playwright:
                 self.playwright = sync_playwright().start()
             
@@ -58,7 +67,8 @@ class SBSWorkerThread(threading.Thread):
             self.page = self.context.new_page()
             self.page.goto(SBS_URL, wait_until="domcontentloaded", timeout=25000)
             self.is_ready = True
-            print(f"[SBS Worker {self.worker_id}] Chromium listo y conectado a la SBS.")
+            modo = "segundo plano (silencioso)" if headless else "ventana visible"
+            print(f"[SBS Worker {self.worker_id}] Chromium listo en {modo}.")
         except Exception as e:
             print(f"[SBS Worker {self.worker_id}] Error al inicializar navegador: {e}")
             self.close_browser()
@@ -96,7 +106,7 @@ class SBSWorkerThread(threading.Thread):
         # Si la recarga falló, reiniciar contexto
         self.close_browser()
         time.sleep(0.5)
-        self.init_browser(headless=False)
+        self.init_browser(headless=self.get_headless())
 
     def is_browser_alive(self):
         """Verifica de forma activa si el navegador y la página siguen abiertos y respondiendo"""
@@ -113,9 +123,10 @@ class SBSWorkerThread(threading.Thread):
     def ensure_browser(self):
         """Si la ventana fue cerrada por el usuario o no está lista, la reabre"""
         if not self.is_browser_alive():
-            print(f"[SBS Worker {self.worker_id}] Ventana cerrada o no lista. Abriendo Chromium...")
+            modo = "segundo plano" if self.get_headless() else "ventana en pantalla"
+            print(f"[SBS Worker {self.worker_id}] Iniciando navegador ({modo})...")
             self.close_browser()
-            self.init_browser(headless=False)
+            self.init_browser(headless=self.get_headless())
 
     def close_browser(self):
         """Cierra el navegador y la página de forma limpia e inmediata"""
@@ -372,10 +383,11 @@ class SBSWorkerThread(threading.Thread):
 
 class SBSServiceManager:
     _instance = None
-    _lock = threading.Lock()
+    _lock = threading.RLock()
 
     def __init__(self):
         self.concurrency = 1
+        self.headless = False  # Por defecto visible en pantalla para la secretaria
         self.task_queue = queue.Queue()
         self.workers = []
         self._update_worker_pool(self.concurrency)
@@ -389,18 +401,16 @@ class SBSServiceManager:
 
     def _update_worker_pool(self, target_concurrency):
         with self._lock:
-            # Asegurar entre 1 y 3
             target_concurrency = max(1, min(3, target_concurrency))
             current_len = len(self.workers)
 
             if target_concurrency > current_len:
                 for wid in range(current_len, target_concurrency):
-                    w = SBSWorkerThread(worker_id=wid, task_queue=self.task_queue)
+                    w = SBSWorkerThread(worker_id=wid, task_queue=self.task_queue, manager=self)
                     w.start()
                     self.workers.append(w)
                     print(f"[SBSServiceManager] Worker {wid} iniciado (total: {len(self.workers)})")
             elif target_concurrency < current_len:
-                # Reducir workers
                 to_remove = self.workers[target_concurrency:]
                 self.workers = self.workers[:target_concurrency]
                 for w in to_remove:
@@ -409,9 +419,31 @@ class SBSServiceManager:
 
             self.concurrency = target_concurrency
 
+    def set_config(self, concurrency=None, headless=None):
+        with self._lock:
+            if headless is not None:
+                new_headless = bool(headless)
+                if new_headless != self.headless:
+                    self.headless = new_headless
+                    # Reiniciar navegadores con el nuevo modo de visibilidad
+                    for w in self.workers:
+                        w.close_browser()
+            if concurrency is not None:
+                self._update_worker_pool(int(concurrency))
+            return {
+                'concurrency': self.concurrency,
+                'headless': self.headless
+            }
+
+    def get_config(self):
+        with self._lock:
+            return {
+                'concurrency': self.concurrency,
+                'headless': self.headless
+            }
+
     def set_concurrency(self, concurrency):
-        self._update_worker_pool(concurrency)
-        return self.concurrency
+        return self.set_config(concurrency=concurrency)['concurrency']
 
     def get_concurrency(self):
         return self.concurrency
@@ -433,7 +465,6 @@ class SBSServiceManager:
 
     def stop(self):
         """Cierra inmediatamente todos los navegadores y drena la cola de tareas"""
-        # Vaciar tareas pendientes en la cola
         while not self.task_queue.empty():
             try:
                 task = self.task_queue.get_nowait()
@@ -444,7 +475,6 @@ class SBSServiceManager:
             except Exception:
                 break
 
-        # Cerrar inmediatamente todas las ventanas abiertas en todos los workers
         with self._lock:
             for w in self.workers:
                 try:

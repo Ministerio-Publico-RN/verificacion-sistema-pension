@@ -517,20 +517,20 @@
         <!-- Pestañas de Operación -->
         <div class="afpnet-tabs">
           <button type="button" class="afpnet-tab active" data-tab="tab-import-result">
-            📥 Importar resultado (.xlsx)
+            Importar resultado (.xlsx)
           </button>
           <button type="button" class="afpnet-tab" data-tab="tab-generate-template">
-            📋 Descargar plantillas (.xls)
+            Descargar plantillas (.xls)
           </button>
           <button type="button" class="afpnet-tab" data-tab="tab-bot-automation">
-            🤖 Automatizador en pantalla
+            Automatizador en pantalla
           </button>
         </div>
 
         <!-- Pestaña 1: Importar Resultado Excel -->
         <div class="afpnet-tab-content" id="tab-import-result">
           <div class="alert-box alert-info">
-            <span class="alert-icon">💡</span>
+            <span class="alert-icon">i</span>
             <div>
               <strong>Cruce masivo instantáneo:</strong>
               Cargue el archivo de respuestas descargado de AFPNET (ejemplo: <code>res_prueba_*.xlsx</code>). El sistema cruzará automáticamente los datos de AFP, CUSPP, comisión y devengues con la nómina institucional.
@@ -551,7 +551,7 @@
 
           <div class="quick-demo-box" style="margin-top: 14px;">
             <button type="button" class="btn btn-outline-primary btn-sm w-100" id="btnLoadAfpnetSampleResult">
-              ⚡ Cargar archivo de prueba oficial (docs/archivos_pruebas/res_prueba_1_consultaCUSPPMasiva.xlsx)
+              Cargar archivo de prueba oficial (docs/archivos_pruebas/res_prueba_1_consultaCUSPPMasiva.xlsx)
             </button>
           </div>
 
@@ -561,7 +561,7 @@
         <!-- Pestaña 2: Generar Plantillas XLS -->
         <div class="afpnet-tab-content hidden" id="tab-generate-template">
           <div class="alert-box alert-warning">
-            <span class="alert-icon">⚠️</span>
+            <span class="alert-icon">!</span>
             <div>
               <strong>Límite oficial de AFPNET:</strong>
               Al consultar con periodo de devengue para conocer la AFP y tipo de comisión, AFPNET admite un máximo de <strong>100 registros por carga</strong>. La nómina ha sido segmentada automáticamente:
@@ -573,7 +573,7 @@
               <h5 style="color: #0B2F64; margin-bottom: 4px;">Lote 1 (registros 1 al 100)</h5>
               <p style="font-size: 12px; color: #64748B; margin-bottom: 10px;">Primeros 100 trabajadores formateados para consulta con devengue en AFPNET.</p>
               <a href="/api/afpnet/download-template?lote=1" class="btn btn-institutional btn-xs w-100" download style="text-align: center; display: block;">
-                📥 Descargar lote 1 (.xls)
+                Descargar lote 1 (.xls)
               </a>
             </div>
 
@@ -581,7 +581,7 @@
               <h5 style="color: #0B2F64; margin-bottom: 4px;">Lote 2 (registros 101 al 133)</h5>
               <p style="font-size: 12px; color: #64748B; margin-bottom: 10px;">Los 33 trabajadores restantes de la nómina.</p>
               <a href="/api/afpnet/download-template?lote=2" class="btn btn-institutional btn-xs w-100" download style="text-align: center; display: block;">
-                📥 Descargar lote 2 (.xls)
+                Descargar lote 2 (.xls)
               </a>
             </div>
 
@@ -589,7 +589,7 @@
               <h5 style="color: #0B2F64; margin-bottom: 4px;">Nómina completa (133 reg.)</h5>
               <p style="font-size: 12px; color: #64748B; margin-bottom: 10px;">Para consulta general de CUSPP sin seleccionar devengue.</p>
               <a href="/api/afpnet/download-template?lote=all" class="btn btn-outline-secondary btn-xs w-100" download style="text-align: center; display: block;">
-                📥 Descargar todo (.xls)
+                Descargar todo (.xls)
               </a>
             </div>
           </div>
@@ -602,7 +602,7 @@
               <div style="font-weight: 700; color: #0B2F64; margin-bottom: 4px;">1. Abrir portal AFPNET en pantalla</div>
               <p style="font-size: 12px; color: #64748B; margin-bottom: 8px;">Abre Chromium visible en <code>https://www.afpnet.com.pe/</code> y precarga automáticamente el RUC (<code>20131370301</code>), usuario y contraseña.</p>
               <button type="button" class="btn btn-institutional btn-sm" id="btnAfpnetOpenBrowser">
-                🌐 Abrir ventana con credenciales precargadas
+                Abrir ventana con credenciales precargadas
               </button>
             </div>
 
@@ -631,68 +631,59 @@
     </div>
   </div>
 
-  <!-- Modal de Configuración de Scraping y Paralelismo -->
+  <!-- Modal de Opciones de Consulta SBS -->
   <div class="modal-backdrop hidden" id="configModalBackdrop">
     <div class="modal-dialog modal-md">
       <div class="modal-header">
         <div class="modal-title-group">
-          <h3>Configuración de velocidad y paralelismo</h3>
-          <span class="modal-subtitle">Ajuste de ventanas simultáneas y prevención de bloqueo SBS</span>
+          <h3>Opciones de consulta SBS</h3>
+          <span class="modal-subtitle">Ajustes de visualización y velocidad de verificación</span>
         </div>
-        <button type="button" class="btn-close-modal" id="btnCloseConfigModal">&times;</button>
+        <button type="button" class="modal-close-btn" id="btnCloseConfigModal">&times;</button>
       </div>
       <div class="modal-body">
-        <div class="form-group mb-4">
-          <label class="form-label">Navegadores simultáneos (ventanas paralelas):</label>
-          <div class="concurrency-selector">
-            <label class="concurrency-option">
-              <input type="radio" name="concurrencyRadio" value="1" checked>
+        <!-- Switch para mostrar u ocultar navegador -->
+        <div class="switch-setting-card">
+          <div class="switch-setting-info">
+            <span class="switch-setting-title">Mostrar ventana de consulta en pantalla</span>
+            <span class="switch-setting-desc">
+              Active esta opción para ver el navegador mientras realiza las búsquedas. Si la desactiva, las consultas se realizarán de manera silenciosa en segundo plano.
+            </span>
+          </div>
+          <label class="switch-control" for="cfgVisibleBrowser">
+            <input type="checkbox" id="cfgVisibleBrowser" checked>
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+
+        <!-- Selector de Velocidad Simple -->
+        <div class="form-group mb-2">
+          <label class="config-label">Velocidad de verificación:</label>
+          <div class="speed-selector">
+            <label class="speed-option">
+              <input type="radio" name="speedRadio" value="1" checked>
               <div class="option-card">
-                <span class="option-title">1 ventana</span>
-                <span class="option-sub">Estándar y más segura</span>
+                <span class="option-title">Velocidad normal</span>
+                <span class="option-sub">Una consulta a la vez. Ritmo recomendado y seguro.</span>
               </div>
             </label>
-            <label class="concurrency-option">
-              <input type="radio" name="concurrencyRadio" value="2">
+            <label class="speed-option">
+              <input type="radio" name="speedRadio" value="2">
               <div class="option-card">
-                <span class="option-title">2 ventanas (2x)</span>
-                <span class="option-sub">Recomendado para nóminas medianas</span>
-              </div>
-            </label>
-            <label class="concurrency-option">
-              <input type="radio" name="concurrencyRadio" value="3">
-              <div class="option-card">
-                <span class="option-title">3 ventanas (3x)</span>
-                <span class="option-sub">Máxima velocidad</span>
+                <span class="option-title">Velocidad rápida</span>
+                <span class="option-sub">Dos consultas a la vez para avanzar más rápido.</span>
               </div>
             </label>
           </div>
-          <p class="form-hint mt-2">
-            💡 Cada ventana Chromium funciona con su propia sesión limpia aislada para evitar conflictos de cookies de Imperva.
-          </p>
         </div>
 
-        <div class="form-group mb-4">
-          <label class="form-label" for="cfgDelay">Intervalo de pausa entre consultas (segundos):</label>
-          <select id="cfgDelay" class="select-control">
-            <option value="800">0.8 s (Rápido)</option>
-            <option value="1200" selected>1.2 s (Equilibrado y recomendado)</option>
-            <option value="2000">2.0 s (Prudente anti-bloqueo)</option>
-          </select>
-          <p class="form-hint mt-1">Pausa breve para no saturar el servidor de la SBS ni disparar el hCaptcha.</p>
-        </div>
-
-        <div class="security-info-box">
-          <div class="sec-badge">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-            <span>Desbloqueo inteligente activo</span>
-          </div>
-          <p>Si la SBS detecta ráfagas y solicita verificación de seguridad, el sistema limpia las cookies de visitante al instante sin esperar 2 minutos.</p>
+        <div class="user-notice-box">
+          El sistema cuenta con protección automática para reintentar la búsqueda si el portal de la SBS tarda en responder.
         </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary btn-sm" id="btnCancelConfig">Cancelar</button>
-        <button type="button" class="btn btn-institutional btn-sm" id="btnSaveConfig">Guardar configuración</button>
+        <button type="button" class="btn btn-institutional btn-sm" id="btnSaveConfig">Guardar opciones</button>
       </div>
     </div>
   </div>
