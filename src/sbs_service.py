@@ -6,8 +6,10 @@ cookies ante retos de Imperva y cierre inmediato de ventanas.
 """
 import time
 import re
+import os
 import queue
 import threading
+import subprocess
 from playwright.sync_api import sync_playwright
 
 SBS_URL = "https://servicios.sbs.gob.pe/ReporteSituacionPrevisional/Afil_Consulta.aspx"
@@ -89,10 +91,10 @@ class SBSWorkerThread(threading.Thread):
     def wait_cooldown_if_blocked(self):
         """Si algún worker activó una pausa de seguridad, esperar activamente a que expire"""
         if self.manager and hasattr(self.manager, 'cooldown_until'):
-            remaining = self.manager.cooldown_until - time.time()
-            if remaining > 0:
-                print(f"[SBS Worker {self.worker_id}] Enfriando conexión SBS ({round(remaining, 1)}s restantes)...")
-                time.sleep(remaining)
+            while time.time() < self.manager.cooldown_until:
+                if self.interrupted or not self.running:
+                    break
+                time.sleep(0.5)
 
     def is_imperva_blocked(self):
         """
@@ -182,7 +184,14 @@ class SBSWorkerThread(threading.Thread):
             with self.manager._lock:
                 self.manager.cooldown_until = max(getattr(self.manager, 'cooldown_until', 0), time.time() + cooldown_sec)
 
-        time.sleep(cooldown_sec)
+        for _ in range(int(cooldown_sec * 2)):
+            if self.interrupted or not self.running:
+                return
+            time.sleep(0.5)
+
+        if self.interrupted or not self.running:
+            return
+
         print(f"[SBS Worker {self.worker_id}] Pausa de seguridad cumplida. Reabriendo ventana limpia...")
         self.init_browser(headless=self.get_headless())
 
@@ -281,8 +290,34 @@ class SBSWorkerThread(threading.Thread):
 
         t0 = time.time()
 
+        if self.interrupted or not self.running:
+            return {
+                'afiliado_spp': None,
+                'afp': 'CANCELADO',
+                'cuspp': '-',
+                'fecha_afiliacion': '-',
+                'situacion': 'CANCELADO',
+                'estado_sbs': 'CANCELADO',
+                'mensaje': 'Verificación detenida por el usuario.',
+                'tiempo_seg': 0,
+                'worker_id': self.worker_id
+            }
+
         # Si el servicio está en enfriamiento por bloqueo de seguridad, aguardar
         self.wait_cooldown_if_blocked()
+
+        if self.interrupted or not self.running:
+            return {
+                'afiliado_spp': None,
+                'afp': 'CANCELADO',
+                'cuspp': '-',
+                'fecha_afiliacion': '-',
+                'situacion': 'CANCELADO',
+                'estado_sbs': 'CANCELADO',
+                'mensaje': 'Verificación detenida por el usuario.',
+                'tiempo_seg': 0,
+                'worker_id': self.worker_id
+            }
 
         self.ensure_browser()
 
@@ -346,6 +381,18 @@ class SBSWorkerThread(threading.Thread):
             # Detectar activamente en micro-intervalos si ya respondió la SBS o si saltó el captcha:
             t_wait_start = time.time()
             while time.time() - t_wait_start < 12:
+                if self.interrupted or not self.running:
+                    return {
+                        'afiliado_spp': None,
+                        'afp': 'CANCELADO',
+                        'cuspp': '-',
+                        'fecha_afiliacion': '-',
+                        'situacion': 'CANCELADO',
+                        'estado_sbs': 'CANCELADO',
+                        'mensaje': 'Verificación detenida por el usuario.',
+                        'tiempo_seg': round(time.time() - t0, 2),
+                        'worker_id': self.worker_id
+                    }
                 if self.is_imperva_blocked():
                     break
                 try:
@@ -443,6 +490,18 @@ class SBSWorkerThread(threading.Thread):
         except Exception as e:
             elapsed = round(time.time() - t0, 2)
             err_msg = str(e)
+            if self.interrupted or not self.running:
+                return {
+                    'afiliado_spp': None,
+                    'afp': 'CANCELADO',
+                    'cuspp': '-',
+                    'fecha_afiliacion': '-',
+                    'situacion': 'CANCELADO',
+                    'estado_sbs': 'CANCELADO',
+                    'mensaje': 'Verificación detenida por el usuario.',
+                    'tiempo_seg': elapsed,
+                    'worker_id': self.worker_id
+                }
             print(f"[SBS Worker {self.worker_id}] Excepción durante consulta SBS: {err_msg}")
             
             if not self.is_browser_alive() or "closed" in err_msg.lower() or "target" in err_msg.lower():
@@ -586,26 +645,66 @@ class SBSServiceManager:
             'result_queue': res_queue
         })
         timeout_wait = max(120, int(getattr(self, 'block_cooldown', 45)) * 2 + 30)
-        return res_queue.get(timeout=timeout_wait)
+        try:
+            return res_queue.get(timeout=timeout_wait)
+        except queue.Empty:
+            return {
+                'afiliado_spp': None,
+                'afp': 'TIMEOUT SBS',
+                'cuspp': '-',
+                'fecha_afiliacion': '-',
+                'situacion': 'TIMEOUT',
+                'estado_sbs': 'TIMEOUT',
+                'mensaje': 'Tiempo de consulta agotado',
+                'tiempo_seg': timeout_wait
+            }
 
     def stop(self):
         """Cierra inmediatamente todos los navegadores y drena la cola de tareas"""
+        # 1. Cancelar cualquier cooldown activo
+        self.cooldown_until = 0
+
+        # 2. Drenar la cola de tareas pendientes para que ningún request quede colgado
         while not self.task_queue.empty():
             try:
                 task = self.task_queue.get_nowait()
                 rq = task.get('result_queue')
                 if rq:
-                    rq.put({'success': False, 'mensaje': 'Verificación cancelada por el usuario'})
+                    rq.put({
+                        'afiliado_spp': None,
+                        'afp': 'CANCELADO',
+                        'cuspp': '-',
+                        'fecha_afiliacion': '-',
+                        'situacion': 'CANCELADO',
+                        'estado_sbs': 'CANCELADO',
+                        'mensaje': 'Verificación cancelada por el usuario'
+                    })
                 self.task_queue.task_done()
             except Exception:
                 break
 
+        # 3. Marcar a todos los workers como interrumpidos y cerrar/matar procesos de Chromium
         with self._lock:
             for w in self.workers:
+                w.interrupted = True
+                w.running = False
                 try:
-                    w.close_browser()
+                    if w.playwright and hasattr(w.playwright, '_impl_obj'):
+                        proc = getattr(w.playwright._impl_obj._connection._transport, '_proc', None)
+                        if proc and proc.pid:
+                            subprocess.call(f'taskkill /F /T /PID {proc.pid}', shell=True)
                 except Exception as e:
-                    print(f"[SBSServiceManager] Error al cerrar worker {w.worker_id}: {e}")
+                    print(f"[SBSServiceManager] Error al terminar proceso de worker {w.worker_id}: {e}")
+
+                w.page = None
+                w.context = None
+                w.browser = None
+                w.playwright = None
+                w.is_ready = False
+
+            # 4. Vaciar la lista y regenerar el pool limpio para permitir reanudar
+            self.workers = []
+            self._update_worker_pool(self.concurrency)
 
         return {'success': True, 'message': 'Todas las ventanas de Playwright fueron cerradas de inmediato.'}
 

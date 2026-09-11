@@ -845,10 +845,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (isVerifying) {
       if (confirm('¿Desea detener la verificación y cerrar las ventanas de consulta?')) {
         cancelVerification = true;
-        btnStartVerify.disabled = true;
-        btnStartVerify.textContent = 'Cerrando ventanas...';
+        isVerifying = false;
         stopTimer();
-        // Cierre inmediato de ventanas en Playwright
+        btnStartVerify.disabled = false;
+        btnStartVerify.classList.remove('btn-outline-danger');
+        btnStartVerify.classList.add('btn-institutional');
+        btnStartVerify.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          Reanudar verificación SBS
+        `;
+        progressLabel.textContent = 'Verificación detenida por el usuario. Ventanas cerradas.';
         fetch('/api/sbs/stop', { method: 'POST' }).catch(() => {});
       }
       return;
@@ -888,10 +896,11 @@ document.addEventListener('DOMContentLoaded', () => {
       while (queueIndex < workersToProcess.length && !cancelVerification) {
         const currentWorkerIdx = queueIndex++;
         const w = workersToProcess[currentWorkerIdx];
-        if (!w) break;
+        if (!w || cancelVerification) break;
 
         updateProgressBar(completed, total, `[Ventana ${workerNum + 1}] Consultando: ${w.nombre_completo} (${w.dni})`);
 
+        let sbsRes = null;
         try {
           const response = await fetch('/api/sbs/verify-worker', {
             method: 'POST',
@@ -905,7 +914,7 @@ document.addEventListener('DOMContentLoaded', () => {
             })
           });
 
-          const sbsRes = await response.json();
+          sbsRes = await response.json();
           w.sbs_resultado = sbsRes;
           evaluateWorkerSemaforo(w);
         } catch (err) {
@@ -917,6 +926,8 @@ document.addEventListener('DOMContentLoaded', () => {
             mensaje: err.message
           };
         }
+
+        if (cancelVerification) break;
 
         completed++;
         updateProgressBar(completed, total, `[Ventana ${workerNum + 1}] Finalizado: ${w.nombre_completo}`);
@@ -944,7 +955,11 @@ document.addEventListener('DOMContentLoaded', () => {
         await workerTask(wIndex);
       })(i));
     }
-    await Promise.all(workerPromises);
+    try {
+      await Promise.all(workerPromises);
+    } catch (e) {
+      console.error('Error en pool de trabajadores SBS:', e);
+    }
 
     stopTimer();
     isVerifying = false;
