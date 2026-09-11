@@ -341,34 +341,38 @@ class SBSWorkerThread(threading.Thread):
             }
 
         try:
-            # 1. Si existe el botón "Consultar otro registro", reiniciar formulario
-            try:
-                btn_otro = self.page.query_selector("#ctl00_ContentPlaceHolder1_btnOtro_Registro")
-                if btn_otro and btn_otro.is_visible():
-                    btn_otro.click()
-                    try:
-                        self.page.wait_for_load_state('domcontentloaded', timeout=5000)
-                        self.page.wait_for_timeout(100)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+            # 1. Si la ventana está en la pantalla del Reporte de Afiliación (con botón "Consultar otro registro"):
+            btn_otro = self.page.query_selector("#ctl00_ContentPlaceHolder1_btnOtro_Registro")
+            if btn_otro and btn_otro.is_visible():
+                btn_otro.click()
+                try:
+                    self.page.wait_for_selector("#ctl00_ContentPlaceHolder1_txtNumeroDoc", state="visible", timeout=10000)
+                    self.page.wait_for_timeout(200)
+                except Exception:
+                    pass
 
-            # 2. Verificar si la pantalla quedó bloqueada por captcha antes de llenar
+            # 2. Si no está visible el formulario ni el botón otro registro, ir a la URL oficial
+            if not self.page.query_selector("#ctl00_ContentPlaceHolder1_txtNumeroDoc"):
+                try:
+                    self.page.goto(SBS_URL, wait_until="domcontentloaded", timeout=15000)
+                    self.page.wait_for_selector("#ctl00_ContentPlaceHolder1_txtNumeroDoc", state="visible", timeout=10000)
+                except Exception:
+                    pass
+
             if self.is_imperva_blocked() and retry_count < 2:
                 self.handle_security_block(dni)
                 return self._execute_query(params, retry_count=retry_count + 1)
 
-            if not self.page.query_selector("#ctl00_ContentPlaceHolder1_cboTipoDoc"):
-                try:
-                    self.page.goto(SBS_URL, wait_until="domcontentloaded", timeout=15000)
-                except Exception:
-                    pass
-                if self.is_imperva_blocked() and retry_count < 2:
-                    self.handle_security_block(dni)
-                    return self._execute_query(params, retry_count=retry_count + 1)
+            # 3. Limpiar cualquier texto de respuesta o mensaje residual del trabajador previo
+            try:
+                self.page.evaluate("""() => {
+                    const msg = document.querySelector('#ctl00_ContentPlaceHolder1_lblMensaje, #ctl00_ContentPlaceHolder1_lblError');
+                    if (msg) msg.textContent = '';
+                }""")
+            except Exception:
+                pass
 
-            # 3. Llenar formulario
+            # 4. Llenar formulario con datos del trabajador actual
             self.page.select_option("#ctl00_ContentPlaceHolder1_cboTipoDoc", "00") # DNI
             self.page.fill("#ctl00_ContentPlaceHolder1_txtNumeroDoc", dni)
             self.page.fill("#ctl00_ContentPlaceHolder1_txtAp_pat", ape_pat)
@@ -376,12 +380,16 @@ class SBSWorkerThread(threading.Thread):
             self.page.fill("#ctl00_ContentPlaceHolder1_txtPri_nom", primer_nom)
             self.page.fill("#ctl00_ContentPlaceHolder1_txtSeg_nom", segundo_nom or "")
 
-            # 4. Enviar búsqueda
+            # 5. Marcar el DOM con el DNI actual para saber cuándo el postback de SBS ha respondido de verdad
+            self.page.evaluate(f"() => document.body.setAttribute('data-sbs-cur-dni', '{dni}')")
+
+            # 6. Enviar búsqueda
             self.page.click("#ctl00_ContentPlaceHolder1_btnBuscar")
             
-            # Detectar activamente en micro-intervalos si ya respondió la SBS o si saltó el captcha:
+            # 7. Esperar activamente en micro-intervalos a que el servidor de la SBS entregue la respuesta
             t_wait_start = time.time()
-            while time.time() - t_wait_start < 12:
+            response_arrived = False
+            while time.time() - t_wait_start < 15:
                 if self.interrupted or not self.running:
                     return {
                         'afiliado_spp': None,
@@ -397,28 +405,30 @@ class SBSWorkerThread(threading.Thread):
                 if self.is_imperva_blocked():
                     break
                 try:
-                    body_check = self.page.inner_text("body")
-                    body_upper = body_check.upper()
-                    if any(k in body_upper for k in [
-                        "BTNOTRO_REGISTRO",
-                        "NO SE ENCONTRARON",
-                        "PROFUTURO",
-                        "INTEGRA",
-                        "PRIMA",
-                        "HABITAT",
-                        "ERROR: LA CONSULTA ES SOSPECHOSA",
-                        "SITUACION ACTUAL ES",
-                        "SITUACIÓN ACTUAL ES",
-                        "DESDE EL",
-                        "REPORTE DE SITUAC",
-                        "CUSPP"
-                    ]) or self.page.query_selector("#ctl00_ContentPlaceHolder1_btnOtro_Registro"):
+                    # Caso A: Se cargó la pantalla de Reporte Oficial (Afiliado encontrado)
+                    btn_otro_now = self.page.query_selector("#ctl00_ContentPlaceHolder1_btnOtro_Registro")
+                    if btn_otro_now and btn_otro_now.is_visible():
+                        response_arrived = True
                         break
+
+                    # Caso B: El postback ha respondido (el atributo data-sbs-cur-dni fue reemplazado por la respuesta del servidor)
+                    attr_marker = self.page.evaluate("() => document.body.getAttribute('data-sbs-cur-dni')")
+                    if not attr_marker:
+                        b_text = self.page.inner_text("body").upper()
+                        if any(k in b_text for k in [
+                            "NO SE ENCONTRARON RESULTADOS",
+                            "PROFUTURO", "INTEGRA", "PRIMA", "HABITAT",
+                            "ERROR: LA CONSULTA ES SOSPECHOSA",
+                            "SE ENCUENTRA AFILIADO",
+                            "REPORTE DE SITUACI"
+                        ]):
+                            response_arrived = True
+                            break
                 except Exception:
                     pass
-                self.page.wait_for_timeout(250)
+                self.page.wait_for_timeout(200)
 
-            # 5. Analizar contenido
+            # 8. Analizar contenido
             body_text = ""
             try:
                 body_text = self.page.inner_text("body")
@@ -431,7 +441,40 @@ class SBSWorkerThread(threading.Thread):
                 self.handle_security_block(dni)
                 return self._execute_query(params, retry_count=retry_count + 1)
 
-            if "No se encontraron resultados" in body_text:
+            # PRIORIDAD 1: Identificar AFP y extraer datos si el trabajador está afiliado
+            afp_detectada = None
+            for afp_name in ['PROFUTURO', 'INTEGRA', 'PRIMA', 'HABITAT']:
+                if afp_name in body_text.upper():
+                    afp_detectada = afp_name
+                    break
+
+            if afp_detectada:
+                # Extraer CUSPP
+                m_cuspp = re.search(r'[0-9]{6}[A-Z0-9]{6}', body_text)
+                cuspp = m_cuspp.group(0) if m_cuspp else '-'
+
+                # Extraer fecha de afiliación (formato DD/MM/YYYY)
+                m_fecha = re.search(r'desde el[\s\|:]*(\d{2}/\d{2}/\d{4})', body_text, re.IGNORECASE)
+                fecha_afil = m_fecha.group(1) if m_fecha else '-'
+
+                # Extraer situación
+                m_sit = re.search(r'situaci[oó]n actual es[\s\|:]*([A-Za-z]+)', body_text, re.IGNORECASE)
+                situacion = m_sit.group(1) if m_sit else 'AFILIADO'
+
+                return {
+                    'afiliado_spp': True,
+                    'afp': afp_detectada,
+                    'cuspp': cuspp,
+                    'fecha_afiliacion': fecha_afil,
+                    'situacion': situacion,
+                    'estado_sbs': 'ENCONTRADO',
+                    'mensaje': f'Afiliado a {afp_detectada} desde {fecha_afil}',
+                    'tiempo_seg': elapsed,
+                    'worker_id': self.worker_id
+                }
+
+            # PRIORIDAD 2: Si confirmó que no se encontraron resultados (NO REGISTRADO verificado)
+            if "No se encontraron resultados" in body_text and response_arrived:
                 return {
                     'afiliado_spp': False,
                     'afp': 'NO REGISTRADO',
@@ -457,27 +500,18 @@ class SBSWorkerThread(threading.Thread):
                     'worker_id': self.worker_id
                 }
 
-            # Identificar AFP
-            afp_detectada = None
-            for afp_name in ['PROFUTURO', 'INTEGRA', 'PRIMA', 'HABITAT']:
-                if afp_name in body_text.upper():
-                    afp_detectada = afp_name
-                    break
-
-            if not afp_detectada:
-                # Si no figura ninguna AFP válida y tampoco "No se encontraron resultados":
-                # La consulta se topó con un reto de reCAPTCHA, bloqueo o la página no cargó el reporte
-                return {
-                    'afiliado_spp': None,
-                    'afp': 'RETO RECAPTCHA',
-                    'cuspp': '-',
-                    'fecha_afiliacion': '-',
-                    'situacion': 'RETO CAPTCHA',
-                    'estado_sbs': 'RECAPTCHA_CHALLENGE',
-                    'mensaje': 'El portal SBS presentó reCAPTCHA o la respuesta no cargó a tiempo.',
-                    'tiempo_seg': elapsed,
-                    'worker_id': self.worker_id
-                }
+            # Si no figura ninguna AFP válida y tampoco "No se encontraron resultados" confirmados:
+            return {
+                'afiliado_spp': None,
+                'afp': 'RETO RECAPTCHA',
+                'cuspp': '-',
+                'fecha_afiliacion': '-',
+                'situacion': 'RETO CAPTCHA',
+                'estado_sbs': 'RECAPTCHA_CHALLENGE',
+                'mensaje': 'El portal SBS presentó reCAPTCHA o la respuesta no cargó a tiempo.',
+                'tiempo_seg': elapsed,
+                'worker_id': self.worker_id
+            }
 
             # Extraer CUSPP
             m_cuspp = re.search(r'[0-9]{6}[A-Z0-9]{6}', body_text)
