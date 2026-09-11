@@ -457,3 +457,4 @@ class SBSServiceManager:
 
 def get_sbs_service():
     return SBSServiceManager.get_instance()
+

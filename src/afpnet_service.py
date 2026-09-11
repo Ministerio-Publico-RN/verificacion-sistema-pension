@@ -160,7 +160,7 @@ class AfpnetGenerator:
   </Table>
  </Worksheet>
 </Workbook>"""
-        return xml_template.encode('utf-8').decode('latin1')
+        return xml_template.encode('utf-8')
 
     @staticmethod
     def generate_batches(workers, batch_size=100, output_dir=None):
@@ -182,7 +182,7 @@ class AfpnetGenerator:
             
             xml_data = AfpnetGenerator.generate_excel_xml(chunk, limit=batch_size)
             with open(filepath, 'wb') as f:
-                f.write(xml_data.encode('latin1') if isinstance(xml_data, str) else xml_data)
+                f.write(xml_data)
             
             batches.append({
                 'lote': batch_num,

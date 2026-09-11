@@ -211,3 +211,4 @@ Para trabajar paso a paso de forma ordenada, en cada conversación el usuario so
 | **Fase 4** | Conector ONP (Investigación Captcha + Integración) | Ninguno o confirmación de consulta de casos pendientes | Consulta complementaria a ONP con OCR/asistencia |
 | **Fase 5** | Motor de Discrepancias, Semáforo y Exportación | Criterios adicionales de alertas si los hubiera | Reporte comparativo con semáforo y exportador Excel |
 | **Fase 6** | Empaquetado, Launcher `.bat` y Documentación Final | Pruebas finales en la máquina | Sistema 100% operativo con ejecutable local |
+

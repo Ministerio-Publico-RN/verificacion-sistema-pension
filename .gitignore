@@ -12,3 +12,5 @@ Thumbs.db
 
 # Archivos pesados o sensibles generados
 *.dbf.bak
+uploads/
+web_index.txt
