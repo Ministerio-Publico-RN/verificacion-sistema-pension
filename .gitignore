@@ -1,0 +1,14 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs y temporales
+*.log
+.env
+.DS_Store
+Thumbs.db
+.tempmediaStorage/
+
+# Archivos pesados o sensibles generados
+*.dbf.bak
