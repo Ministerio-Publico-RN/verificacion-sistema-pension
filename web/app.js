@@ -766,59 +766,23 @@ document.addEventListener('DOMContentLoaded', () => {
   // Configuración de Consulta SBS (Modal Simplificado para Usuario Administrativo)
   function initScrapingConfig() {
     const cfgVisibleBrowser = document.getElementById('cfgVisibleBrowser');
-    const cfgConcurrencyInput = document.getElementById('cfgConcurrencyInput');
-    const cfgConcurrencyBadge = document.getElementById('cfgConcurrencyBadge');
-    const btnDecConcurrency = document.getElementById('btnDecConcurrency');
-    const btnIncConcurrency = document.getElementById('btnIncConcurrency');
-    const presetButtons = document.querySelectorAll('.btn-preset');
-
-    function setConcurrencyValue(val) {
-      const clamped = Math.max(1, Math.min(8, parseInt(val) || 1));
-      if (cfgConcurrencyInput) cfgConcurrencyInput.value = clamped;
-      if (cfgConcurrencyBadge) {
-        cfgConcurrencyBadge.textContent = `${clamped} ventana${clamped > 1 ? 's activas' : ' activa'}`;
-      }
-      presetButtons.forEach(btn => {
-        if (parseInt(btn.getAttribute('data-val')) === clamped) {
-          btn.classList.add('active');
-        } else {
-          btn.classList.remove('active');
-        }
-      });
-    }
-
-    if (btnDecConcurrency) {
-      btnDecConcurrency.addEventListener('click', () => {
-        const cur = parseInt(cfgConcurrencyInput?.value) || 1;
-        setConcurrencyValue(cur - 1);
-      });
-    }
-
-    if (btnIncConcurrency) {
-      btnIncConcurrency.addEventListener('click', () => {
-        const cur = parseInt(cfgConcurrencyInput?.value) || 1;
-        setConcurrencyValue(cur + 1);
-      });
-    }
-
-    presetButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const val = parseInt(btn.getAttribute('data-val')) || 1;
-        setConcurrencyValue(val);
-      });
-    });
+    const cfgConcurrency = document.getElementById('cfgConcurrency');
+    const cfgDelayBetween = document.getElementById('cfgDelayBetween');
+    const cfgBlockCooldown = document.getElementById('cfgBlockCooldown');
 
     fetch('/api/sbs/config')
       .then(r => r.json())
       .then(d => {
-        if (d.concurrency) {
-          state.scrapingConfig.concurrency = d.concurrency;
-          setConcurrencyValue(d.concurrency);
-        }
-        if (d.headless !== undefined) {
-          state.scrapingConfig.headless = d.headless;
-          if (cfgVisibleBrowser) cfgVisibleBrowser.checked = !d.headless;
-        }
+        if (d.concurrency && cfgConcurrency) cfgConcurrency.value = d.concurrency;
+        if (d.headless !== undefined && cfgVisibleBrowser) cfgVisibleBrowser.checked = !d.headless;
+        if (d.delay_between !== undefined && cfgDelayBetween) cfgDelayBetween.value = d.delay_between;
+        if (d.block_cooldown !== undefined && cfgBlockCooldown) cfgBlockCooldown.value = d.block_cooldown;
+
+        state.scrapingConfig.concurrency = d.concurrency || 1;
+        state.scrapingConfig.headless = d.headless || false;
+        state.scrapingConfig.delayBetween = d.delay_between !== undefined ? d.delay_between : 1.0;
+        state.scrapingConfig.blockCooldown = d.block_cooldown !== undefined ? d.block_cooldown : 45;
+        state.scrapingConfig.delayMs = Math.round(state.scrapingConfig.delayBetween * 1000);
       })
       .catch(() => {});
 
@@ -834,19 +798,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (btnSaveConfig) {
       btnSaveConfig.addEventListener('click', async () => {
-        const conc = Math.max(1, Math.min(8, parseInt(cfgConcurrencyInput?.value) || 1));
+        const conc = Math.max(1, Math.min(10, parseInt(cfgConcurrency?.value) || 1));
         const isVisible = cfgVisibleBrowser ? cfgVisibleBrowser.checked : true;
         const headless = !isVisible;
+        const delayBetween = Math.max(0, parseFloat(cfgDelayBetween?.value) || 1.0);
+        const blockCooldown = Math.max(5, parseInt(cfgBlockCooldown?.value) || 45);
 
         state.scrapingConfig.concurrency = conc;
         state.scrapingConfig.headless = headless;
-        state.scrapingConfig.delayMs = conc > 1 ? 500 : 1000;
+        state.scrapingConfig.delayBetween = delayBetween;
+        state.scrapingConfig.blockCooldown = blockCooldown;
+        state.scrapingConfig.delayMs = Math.round(delayBetween * 1000);
 
         try {
           await fetch('/api/sbs/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ concurrency: conc, headless: headless })
+            body: JSON.stringify({
+              concurrency: conc,
+              headless: headless,
+              delay_between: delayBetween,
+              block_cooldown: blockCooldown
+            })
           });
         } catch (e) {
           console.warn('Error al guardar configuración en servidor:', e);
@@ -950,15 +923,26 @@ document.addEventListener('DOMContentLoaded', () => {
         updateMetrics();
         renderTable();
 
-        if (!cancelVerification && state.scrapingConfig.delayMs > 0) {
-          await new Promise(r => setTimeout(r, state.scrapingConfig.delayMs));
+        if (sbsRes && sbsRes.estado_sbs === 'BLOQUEO_SEGURIDAD') {
+          updateProgressBar(completed, total, `[Pausa de seguridad SBS] Esperando liberación de conexión...`);
+        }
+
+        const delayTime = state.scrapingConfig.delayMs !== undefined ? state.scrapingConfig.delayMs : 1000;
+        if (!cancelVerification && delayTime > 0) {
+          await new Promise(r => setTimeout(r, delayTime));
         }
       }
     }
 
     const workerPromises = [];
     for (let i = 0; i < concurrency; i++) {
-      workerPromises.push(workerTask(i));
+      workerPromises.push((async (wIndex) => {
+        // Escalonar la apertura de ventanas para no saturar el portal en el mismo milisegundo
+        if (wIndex > 0) {
+          await new Promise(r => setTimeout(r, wIndex * 500));
+        }
+        await workerTask(wIndex);
+      })(i));
     }
     await Promise.all(workerPromises);
 
@@ -1000,6 +984,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (sbs && sbs.afp === 'VENTANA CERRADA') {
       w.semaforo = 'error';
       w.semaforo_texto = 'Ventana cerrada (reintentar)';
+      return;
+    }
+
+    if (sbs && (sbs.estado_sbs === 'BLOQUEO_SEGURIDAD' || sbs.situacion === 'PAUSA DE SEGURIDAD')) {
+      w.semaforo = 'warning';
+      w.semaforo_texto = 'Pausa temporal SBS (reintentar)';
       return;
     }
 

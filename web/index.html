@@ -656,45 +656,35 @@
           </label>
         </div>
 
-        <!-- Cantidad de ventanas de consulta simultáneas -->
+        <!-- Número de ventanas simultáneas -->
         <div class="form-group mb-3">
-          <label class="config-label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <span>Número de ventanas simultáneas:</span>
-            <span class="concurrency-badge" id="cfgConcurrencyBadge">1 ventana activa</span>
-          </label>
+          <label class="config-label" for="cfgConcurrency">Número de ventanas simultáneas:</label>
+          <input type="number" id="cfgConcurrency" class="form-input-standard" min="1" max="10" value="1">
+          <span class="config-helper-text">
+            Cantidad de ventanas que consultarán al mismo tiempo (recomendado: 1 a 3 para evitar saturación).
+          </span>
+        </div>
 
-          <div class="concurrency-stepper-container">
-            <div class="concurrency-stepper">
-              <button type="button" class="btn-stepper" id="btnDecConcurrency" title="Reducir una ventana">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
-              </button>
-              <input type="number" id="cfgConcurrencyInput" class="stepper-input" min="1" max="8" value="1" readonly>
-              <button type="button" class="btn-stepper" id="btnIncConcurrency" title="Añadir una ventana">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
-              </button>
-            </div>
+        <!-- Tiempo de espera entre consultas -->
+        <div class="form-group mb-3">
+          <label class="config-label" for="cfgDelayBetween">Tiempo de espera entre consultas (segundos):</label>
+          <input type="number" id="cfgDelayBetween" class="form-input-standard" min="0" max="10" step="0.5" value="1.0">
+          <span class="config-helper-text">
+            Pausa prudencial entre búsquedas para no saturar la conexión con la SBS (recomendado: 1.0 a 2.0 segundos).
+          </span>
+        </div>
 
-            <div class="concurrency-presets">
-              <button type="button" class="btn-preset active" data-val="1">1 ventana (Recomendada)</button>
-              <button type="button" class="btn-preset" data-val="2">2 ventanas</button>
-              <button type="button" class="btn-preset" data-val="3">3 ventanas</button>
-              <button type="button" class="btn-preset" data-val="4">4 ventanas</button>
-              <button type="button" class="btn-preset" data-val="5">5 ventanas</button>
-            </div>
-          </div>
-
-          <p class="config-helper-text">
-            Puede procesar desde 1 hasta 8 ventanas en paralelo según las necesidades de la oficina. Ante cualquier pantalla de verificación, el sistema reemplazará automáticamente la ventana por una nueva sin tiempos de espera.
-          </p>
+        <!-- Tiempo de espera ante bloqueos -->
+        <div class="form-group mb-3">
+          <label class="config-label" for="cfgBlockCooldown">Tiempo de espera ante bloqueos (segundos):</label>
+          <input type="number" id="cfgBlockCooldown" class="form-input-standard" min="10" max="180" step="5" value="45">
+          <span class="config-helper-text">
+            Tiempo de enfriamiento si el portal de la SBS detecta tráfico temporal. Permite que el portal libere el acceso antes de reanudar automáticamente en una ventana limpia.
+          </span>
         </div>
 
         <div class="user-notice-box">
-          El sistema cuenta con protección automática para reintentar la búsqueda si el portal de la SBS tarda en responder.
+          El sistema cuenta con protección automática para detectar bloqueos temporales de la SBS y reanudar la verificación de manera segura sin intervención manual.
         </div>
       </div>
       <div class="modal-footer">

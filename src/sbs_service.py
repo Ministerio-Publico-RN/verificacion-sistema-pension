@@ -54,21 +54,29 @@ class SBSWorkerThread(threading.Thread):
             pos = get_window_position(self.worker_id)
             win_args = [
                 f"--window-position={pos['x']},{pos['y']}",
-                f"--window-size={pos['width']},{pos['height']}"
+                f"--window-size={pos['width']},{pos['height']}",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-infobars",
+                "--lang=es-ES,es"
             ]
 
             if not self.browser or not self.browser.is_connected():
                 self.browser = self.playwright.chromium.launch(
                     headless=headless,
-                    slow_mo=30 if not headless else 0,
+                    slow_mo=20 if not headless else 0,
                     args=win_args
                 )
 
             # Cada worker tiene su propio BrowserContext aislado (cookie jar propio)
             self.context = self.browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                locale="es-PE",
+                timezone_id="America/Lima",
                 viewport={"width": pos['width'] - 40, "height": pos['height'] - 80}
             )
+            # Eliminar la marca navigator.webdriver para que Imperva no lo identifique como bot
+            self.context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+
             self.page = self.context.new_page()
             self.page.goto(SBS_URL, wait_until="domcontentloaded", timeout=25000)
             self.is_ready = True
@@ -77,6 +85,14 @@ class SBSWorkerThread(threading.Thread):
         except Exception as e:
             print(f"[SBS Worker {self.worker_id}] Error al inicializar navegador: {e}")
             self.close_browser()
+
+    def wait_cooldown_if_blocked(self):
+        """Si algún worker activó una pausa de seguridad, esperar activamente a que expire"""
+        if self.manager and hasattr(self.manager, 'cooldown_until'):
+            remaining = self.manager.cooldown_until - time.time()
+            if remaining > 0:
+                print(f"[SBS Worker {self.worker_id}] Enfriando conexión SBS ({round(remaining, 1)}s restantes)...")
+                time.sleep(remaining)
 
     def is_imperva_blocked(self):
         """Detecta de forma exhaustiva si el portal SBS fue interceptado por la pantalla de seguridad de Imperva, Incapsula o Captcha"""
@@ -132,39 +148,32 @@ class SBSWorkerThread(threading.Thread):
         except Exception:
             return False
 
+    def handle_security_block(self, dni):
+        """
+        Estrategia óptima ante bloqueo o captcha de Imperva:
+        1. Cierra de inmediato la ventana bloqueada para no mantener sockets sospechosos.
+        2. Activa una pausa de seguridad configurable (block_cooldown) para permitir que el
+           sistema WAF de la SBS disipe la penalización de IP (decay del puntaje de riesgo).
+        3. Tras concluir el tiempo de espera, abre una ventana completamente nueva y limpia
+           con propiedades stealth para reanudar la consulta de forma exitosa.
+        """
+        cooldown_sec = getattr(self.manager, 'block_cooldown', 45) if self.manager else 45
+        print(f"[SBS Worker {self.worker_id}] Reto de seguridad/Captcha detectado en DNI {dni}.")
+        print(f"[SBS Worker {self.worker_id}] Cerrando ventana bloqueada e iniciando pausa de seguridad de {cooldown_sec} segundos...")
+
+        self.close_browser()
+
+        if self.manager:
+            with self.manager._lock:
+                self.manager.cooldown_until = max(getattr(self.manager, 'cooldown_until', 0), time.time() + cooldown_sec)
+
+        time.sleep(cooldown_sec)
+        print(f"[SBS Worker {self.worker_id}] Pausa de seguridad cumplida. Reabriendo ventana limpia...")
+        self.init_browser(headless=self.get_headless())
+
     def reopen_fresh_window(self):
-        """
-        Ante un bloqueo o captcha, cierra de inmediato la ventana bloqueada
-        y abre una nueva ventana limpia para saltar el bloqueo sin esperas ni reintentos inútiles.
-        """
-        print(f"[SBS Worker {self.worker_id}] Bloqueo/Captcha detectado. Cerrando ventana bloqueada y abriendo una nueva limpia...")
-        old_page = self.page
-        old_context = self.context
-        old_browser = self.browser
-
-        self.page = None
-        self.context = None
-        self.browser = None
-        self.is_ready = False
-
-        # Cerrar recursos de la ventana bloqueada
-        try:
-            if old_page and not old_page.is_closed():
-                old_page.close()
-        except Exception:
-            pass
-        try:
-            if old_context:
-                old_context.close()
-        except Exception:
-            pass
-        try:
-            if old_browser and old_browser.is_connected():
-                old_browser.close()
-        except Exception:
-            pass
-
-        # Abrir de inmediato la nueva ventana desbloqueada
+        """Cierra la ventana actual y abre una nueva limpia"""
+        self.close_browser()
         self.init_browser(headless=self.get_headless())
 
     def is_browser_alive(self):
@@ -256,12 +265,15 @@ class SBSWorkerThread(threading.Thread):
         segundo_nom = params.get('segundo_nombre', '').strip()
 
         t0 = time.time()
+
+        # Si el servicio está en enfriamiento por bloqueo de seguridad, aguardar
+        self.wait_cooldown_if_blocked()
+
         self.ensure_browser()
 
         if self.is_imperva_blocked():
-            if retry_count < 3:
-                print(f"[SBS Worker {self.worker_id}] Bloqueo detectado al iniciar consulta DNI {dni}. Abriendo ventana nueva...")
-                self.reopen_fresh_window()
+            if retry_count < 2:
+                self.handle_security_block(dni)
                 return self._execute_query(params, retry_count=retry_count + 1)
 
         if not self.is_browser_alive():
@@ -292,9 +304,8 @@ class SBSWorkerThread(threading.Thread):
                 pass
 
             # 2. Verificar si la pantalla quedó bloqueada por captcha antes de llenar
-            if self.is_imperva_blocked() and retry_count < 3:
-                print(f"[SBS Worker {self.worker_id}] Captcha/Bloqueo previo a formulario DNI {dni}. Abriendo ventana nueva...")
-                self.reopen_fresh_window()
+            if self.is_imperva_blocked() and retry_count < 2:
+                self.handle_security_block(dni)
                 return self._execute_query(params, retry_count=retry_count + 1)
 
             if not self.page.query_selector("#ctl00_ContentPlaceHolder1_cboTipoDoc"):
@@ -302,9 +313,8 @@ class SBSWorkerThread(threading.Thread):
                     self.page.goto(SBS_URL, wait_until="domcontentloaded", timeout=15000)
                 except Exception:
                     pass
-                if self.is_imperva_blocked() and retry_count < 3:
-                    print(f"[SBS Worker {self.worker_id}] Captcha/Bloqueo al cargar portal DNI {dni}. Abriendo ventana nueva...")
-                    self.reopen_fresh_window()
+                if self.is_imperva_blocked() and retry_count < 2:
+                    self.handle_security_block(dni)
                     return self._execute_query(params, retry_count=retry_count + 1)
 
             # 3. Llenar formulario
@@ -318,8 +328,7 @@ class SBSWorkerThread(threading.Thread):
             # 4. Enviar búsqueda
             self.page.click("#ctl00_ContentPlaceHolder1_btnBuscar")
             
-            # En vez de esperar 1 minuto o reintentar en la misma ventana bloqueada,
-            # detectamos activamente en micro-intervalos si ya respondió la SBS o si saltó el captcha:
+            # Detectar activamente en micro-intervalos si ya respondió la SBS o si saltó el captcha:
             t_wait_start = time.time()
             while time.time() - t_wait_start < 12:
                 if self.is_imperva_blocked():
@@ -347,10 +356,9 @@ class SBSWorkerThread(threading.Thread):
                 pass
             elapsed = round(time.time() - t0, 2)
 
-            # Si saltó captcha, bloqueo o consulta sospechosa, abrir inmediatamente una nueva ventana limpia
-            if (self.is_imperva_blocked() or "Error: La consulta es sospechosa" in body_text) and retry_count < 3:
-                print(f"[SBS Worker {self.worker_id}] Captcha/Bloqueo tras buscar DNI {dni}. Abriendo ventana nueva y reintentando...")
-                self.reopen_fresh_window()
+            # Si saltó captcha o consulta sospechosa, activar la estrategia de enfriamiento
+            if (self.is_imperva_blocked() or "Error: La consulta es sospechosa" in body_text) and retry_count < 2:
+                self.handle_security_block(dni)
                 return self._execute_query(params, retry_count=retry_count + 1)
 
             if "No se encontraron resultados" in body_text:
@@ -366,15 +374,15 @@ class SBSWorkerThread(threading.Thread):
                     'worker_id': self.worker_id
                 }
 
-            if "Error: La consulta es sospechosa" in body_text:
+            if "Error: La consulta es sospechosa" in body_text or self.is_imperva_blocked():
                 return {
                     'afiliado_spp': None,
-                    'afp': 'ERROR',
+                    'afp': 'BLOQUEO TEMPORAL SBS',
                     'cuspp': '-',
                     'fecha_afiliacion': '-',
-                    'situacion': 'CONSULTA SOSPECHOSA',
-                    'estado_sbs': 'ERROR',
-                    'mensaje': 'El portal SBS bloqueó temporalmente la consulta',
+                    'situacion': 'PAUSA DE SEGURIDAD',
+                    'estado_sbs': 'BLOQUEO_SEGURIDAD',
+                    'mensaje': 'El portal SBS impuso una pausa por tráfico. Aguarde unos instantes.',
                     'tiempo_seg': elapsed,
                     'worker_id': self.worker_id
                 }
@@ -471,6 +479,9 @@ class SBSServiceManager:
     def __init__(self):
         self.concurrency = 1
         self.headless = False  # Por defecto visible en pantalla para la secretaria
+        self.delay_between = 1.0  # Pausa prudencial entre consultas consecutivas
+        self.block_cooldown = 45  # Tiempo de enfriamiento si la SBS detecta tráfico
+        self.cooldown_until = 0   # Timestamp hasta cuando el sistema debe estar en pausa
         self.task_queue = queue.Queue()
         self.workers = []
         self._update_worker_pool(self.concurrency)
@@ -484,7 +495,7 @@ class SBSServiceManager:
 
     def _update_worker_pool(self, target_concurrency):
         with self._lock:
-            target_concurrency = max(1, min(8, int(target_concurrency)))
+            target_concurrency = max(1, min(10, int(target_concurrency)))
             current_len = len(self.workers)
 
             if target_concurrency > current_len:
@@ -502,27 +513,35 @@ class SBSServiceManager:
 
             self.concurrency = target_concurrency
 
-    def set_config(self, concurrency=None, headless=None):
+    def set_config(self, concurrency=None, headless=None, delay_between=None, block_cooldown=None):
         with self._lock:
             if headless is not None:
                 new_headless = bool(headless)
                 if new_headless != self.headless:
                     self.headless = new_headless
-                    # Reiniciar navegadores con el nuevo modo de visibilidad
                     for w in self.workers:
                         w.close_browser()
             if concurrency is not None:
                 self._update_worker_pool(int(concurrency))
+            if delay_between is not None:
+                self.delay_between = max(0.0, float(delay_between))
+            if block_cooldown is not None:
+                self.block_cooldown = max(5, int(block_cooldown))
+
             return {
                 'concurrency': self.concurrency,
-                'headless': self.headless
+                'headless': self.headless,
+                'delay_between': self.delay_between,
+                'block_cooldown': self.block_cooldown
             }
 
     def get_config(self):
         with self._lock:
             return {
                 'concurrency': self.concurrency,
-                'headless': self.headless
+                'headless': self.headless,
+                'delay_between': getattr(self, 'delay_between', 1.0),
+                'block_cooldown': getattr(self, 'block_cooldown', 45)
             }
 
     def set_concurrency(self, concurrency):
@@ -544,7 +563,8 @@ class SBSServiceManager:
             },
             'result_queue': res_queue
         })
-        return res_queue.get(timeout=60)
+        timeout_wait = max(120, int(getattr(self, 'block_cooldown', 45)) * 2 + 30)
+        return res_queue.get(timeout=timeout_wait)
 
     def stop(self):
         """Cierra inmediatamente todos los navegadores y drena la cola de tareas"""

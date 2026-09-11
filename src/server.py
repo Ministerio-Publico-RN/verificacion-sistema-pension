@@ -85,15 +85,22 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             self.send_error(404, "Endpoint no encontrado")
 
     def handle_sbs_set_config(self):
-        """Actualiza la velocidad y modo de visibilidad del navegador Playwright"""
+        """Actualiza la velocidad, modo de visibilidad y tiempos de espera del servicio SBS"""
         try:
             content_length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(content_length).decode('utf-8')
             params = json.loads(body)
             concurrency = params.get('concurrency')
             headless = params.get('headless')
+            delay_between = params.get('delay_between')
+            block_cooldown = params.get('block_cooldown')
             sbs = get_sbs_service()
-            res = sbs.set_config(concurrency=concurrency, headless=headless)
+            res = sbs.set_config(
+                concurrency=concurrency,
+                headless=headless,
+                delay_between=delay_between,
+                block_cooldown=block_cooldown
+            )
             self.send_json({'success': True, **res})
         except Exception as e:
             self.send_json({'error': str(e)}, status=500)
