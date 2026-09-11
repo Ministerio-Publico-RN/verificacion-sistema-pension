@@ -237,7 +237,7 @@
             <div class="columns-dropdown hidden" id="columnsDropdown">
               <div class="dropdown-title">Columnas visibles</div>
               <label class="col-item"><input type="checkbox" data-col="col-num" checked> #</label>
-              <label class="col-item"><input type="checkbox" data-col="col-trabajador" checked> Trabajador (DNI / nombres)</label>
+              <label class="col-item"><input type="checkbox" data-col="col-trabajador" checked> Trabajador</label>
               <label class="col-item"><input type="checkbox" data-col="col-nacim" checked> Fec. nacimiento</label>
               <label class="col-item"><input type="checkbox" data-col="col-siga" checked> Régimen SIGA</label>
               <label class="col-item"><input type="checkbox" data-col="col-sbs" checked> SBS (SPP)</label>
@@ -325,7 +325,7 @@
           <thead>
             <tr>
               <th class="col-num">#</th>
-              <th class="col-trabajador">Trabajador (DNI / nombres)</th>
+              <th class="col-trabajador">Trabajador</th>
               <th class="col-nacim">Fec. nacim.</th>
               <th class="col-siga">Régimen SIGA</th>
               <th class="col-sbs">SBS (SPP)</th>
@@ -656,25 +656,41 @@
           </label>
         </div>
 
-        <!-- Selector de Velocidad Simple -->
-        <div class="form-group mb-2">
-          <label class="config-label">Velocidad de verificación:</label>
-          <div class="speed-selector">
-            <label class="speed-option">
-              <input type="radio" name="speedRadio" value="1" checked>
-              <div class="option-card">
-                <span class="option-title">Velocidad normal</span>
-                <span class="option-sub">Una consulta a la vez. Ritmo recomendado y seguro.</span>
-              </div>
-            </label>
-            <label class="speed-option">
-              <input type="radio" name="speedRadio" value="2">
-              <div class="option-card">
-                <span class="option-title">Velocidad rápida</span>
-                <span class="option-sub">Dos consultas a la vez para avanzar más rápido.</span>
-              </div>
-            </label>
+        <!-- Cantidad de ventanas de consulta simultáneas -->
+        <div class="form-group mb-3">
+          <label class="config-label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span>Número de ventanas simultáneas:</span>
+            <span class="concurrency-badge" id="cfgConcurrencyBadge">1 ventana activa</span>
+          </label>
+
+          <div class="concurrency-stepper-container">
+            <div class="concurrency-stepper">
+              <button type="button" class="btn-stepper" id="btnDecConcurrency" title="Reducir una ventana">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+              </button>
+              <input type="number" id="cfgConcurrencyInput" class="stepper-input" min="1" max="8" value="1" readonly>
+              <button type="button" class="btn-stepper" id="btnIncConcurrency" title="Añadir una ventana">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+              </button>
+            </div>
+
+            <div class="concurrency-presets">
+              <button type="button" class="btn-preset active" data-val="1">1 ventana (Recomendada)</button>
+              <button type="button" class="btn-preset" data-val="2">2 ventanas</button>
+              <button type="button" class="btn-preset" data-val="3">3 ventanas</button>
+              <button type="button" class="btn-preset" data-val="4">4 ventanas</button>
+              <button type="button" class="btn-preset" data-val="5">5 ventanas</button>
+            </div>
           </div>
+
+          <p class="config-helper-text">
+            Puede procesar desde 1 hasta 8 ventanas en paralelo según las necesidades de la oficina. Ante cualquier pantalla de verificación, el sistema reemplazará automáticamente la ventana por una nueva sin tiempos de espera.
+          </p>
         </div>
 
         <div class="user-notice-box">

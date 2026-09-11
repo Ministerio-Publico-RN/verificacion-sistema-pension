@@ -12,12 +12,17 @@ from playwright.sync_api import sync_playwright
 
 SBS_URL = "https://servicios.sbs.gob.pe/ReporteSituacionPrevisional/Afil_Consulta.aspx"
 
-# Posiciones de ventana en mosaico según worker_id
-WINDOW_POSITIONS = [
-    {"x": 60, "y": 60, "width": 880, "height": 680},
-    {"x": 600, "y": 60, "width": 880, "height": 680},
-    {"x": 300, "y": 320, "width": 880, "height": 680}
-]
+# Posición en mosaico dinámica según worker_id
+def get_window_position(worker_id):
+    cols = 3
+    col = worker_id % cols
+    row = (worker_id // cols) % 3
+    return {
+        "x": 40 + (col * 350),
+        "y": 40 + (row * 160),
+        "width": 860,
+        "height": 650
+    }
 
 class SBSWorkerThread(threading.Thread):
     def __init__(self, worker_id, task_queue, manager=None):
@@ -46,7 +51,7 @@ class SBSWorkerThread(threading.Thread):
             if not self.playwright:
                 self.playwright = sync_playwright().start()
             
-            pos = WINDOW_POSITIONS[self.worker_id % len(WINDOW_POSITIONS)]
+            pos = get_window_position(self.worker_id)
             win_args = [
                 f"--window-position={pos['x']},{pos['y']}",
                 f"--window-size={pos['width']},{pos['height']}"
@@ -55,7 +60,7 @@ class SBSWorkerThread(threading.Thread):
             if not self.browser or not self.browser.is_connected():
                 self.browser = self.playwright.chromium.launch(
                     headless=headless,
-                    slow_mo=50 if not headless else 0,
+                    slow_mo=30 if not headless else 0,
                     args=win_args
                 )
 
@@ -74,38 +79,92 @@ class SBSWorkerThread(threading.Thread):
             self.close_browser()
 
     def is_imperva_blocked(self):
-        """Detecta si el portal SBS fue interceptado por la pantalla de seguridad de Imperva / Incapsula"""
+        """Detecta de forma exhaustiva si el portal SBS fue interceptado por la pantalla de seguridad de Imperva, Incapsula o Captcha"""
         try:
             if not self.is_ready or not self.page or self.page.is_closed():
                 return False
-            body_text = self.page.inner_text("body")
-            if "Additional security check is required" in body_text or "Imperva" in body_text or "Why am I seeing this page" in body_text:
+            
+            title = ""
+            try:
+                title = (self.page.title() or "").lower()
+            except Exception:
+                pass
+
+            body_text = ""
+            try:
+                body_text = (self.page.inner_text("body") or "").lower()
+            except Exception:
+                pass
+
+            combined = f"{title} {body_text}"
+            
+            block_signatures = [
+                "additional security check",
+                "imperva",
+                "incapsula",
+                "why am i seeing this page",
+                "hcaptcha",
+                "recaptcha",
+                "soy humano",
+                "verificando si usted es humano",
+                "pardon our interruption",
+                "incident id",
+                "consulta es sospechosa",
+                "request unsuccessful",
+                "access denied",
+                "unusual traffic",
+                "tráfico inusual"
+            ]
+
+            if any(sig in combined for sig in block_signatures):
                 return True
-            if "hcaptcha" in body_text.lower() and "soy humano" in body_text.lower():
-                return True
+
+            # Verificar si existen iframes con retos captcha o challenge
+            try:
+                for frame in self.page.frames:
+                    f_url = (frame.url or "").lower()
+                    if any(c in f_url for c in ["captcha", "challenge", "incapsula", "recaptcha", "hcaptcha"]):
+                        return True
+            except Exception:
+                pass
+
             return False
         except Exception:
             return False
 
-    def reset_session_clean(self):
-        """Elimina cookies de Imperva al instante y recarga la página sin esperar 2 minutos"""
-        print(f"[SBS Worker {self.worker_id}] Imperva detectado. Limpiando cookies y restaurando sesión limpia...")
+    def reopen_fresh_window(self):
+        """
+        Ante un bloqueo o captcha, cierra de inmediato la ventana bloqueada
+        y abre una nueva ventana limpia para saltar el bloqueo sin esperas ni reintentos inútiles.
+        """
+        print(f"[SBS Worker {self.worker_id}] Bloqueo/Captcha detectado. Cerrando ventana bloqueada y abriendo una nueva limpia...")
+        old_page = self.page
+        old_context = self.context
+        old_browser = self.browser
+
+        self.page = None
+        self.context = None
+        self.browser = None
+        self.is_ready = False
+
+        # Cerrar recursos de la ventana bloqueada
         try:
-            if self.context:
-                self.context.clear_cookies()
+            if old_page and not old_page.is_closed():
+                old_page.close()
         except Exception:
             pass
-        
         try:
-            if self.page and not self.page.is_closed():
-                self.page.goto(SBS_URL, wait_until="domcontentloaded", timeout=15000)
-                return
+            if old_context:
+                old_context.close()
         except Exception:
             pass
-        
-        # Si la recarga falló, reiniciar contexto
-        self.close_browser()
-        time.sleep(0.5)
+        try:
+            if old_browser and old_browser.is_connected():
+                old_browser.close()
+        except Exception:
+            pass
+
+        # Abrir de inmediato la nueva ventana desbloqueada
         self.init_browser(headless=self.get_headless())
 
     def is_browser_alive(self):
@@ -200,7 +259,10 @@ class SBSWorkerThread(threading.Thread):
         self.ensure_browser()
 
         if self.is_imperva_blocked():
-            self.reset_session_clean()
+            if retry_count < 3:
+                print(f"[SBS Worker {self.worker_id}] Bloqueo detectado al iniciar consulta DNI {dni}. Abriendo ventana nueva...")
+                self.reopen_fresh_window()
+                return self._execute_query(params, retry_count=retry_count + 1)
 
         if not self.is_browser_alive():
             return {
@@ -222,21 +284,28 @@ class SBSWorkerThread(threading.Thread):
                 if btn_otro and btn_otro.is_visible():
                     btn_otro.click()
                     try:
-                        self.page.wait_for_load_state('domcontentloaded', timeout=6000)
-                        self.page.wait_for_timeout(150)
+                        self.page.wait_for_load_state('domcontentloaded', timeout=5000)
+                        self.page.wait_for_timeout(100)
                     except Exception:
                         pass
             except Exception:
                 pass
 
-            # 2. Verificar que el formulario esté listo (o si saltó Imperva)
-            if self.is_imperva_blocked() and retry_count < 2:
-                print(f"[SBS Worker {self.worker_id}] Imperva detectado antes de llenar formulario (DNI {dni}). Reseteando cookies...")
-                self.reset_session_clean()
+            # 2. Verificar si la pantalla quedó bloqueada por captcha antes de llenar
+            if self.is_imperva_blocked() and retry_count < 3:
+                print(f"[SBS Worker {self.worker_id}] Captcha/Bloqueo previo a formulario DNI {dni}. Abriendo ventana nueva...")
+                self.reopen_fresh_window()
                 return self._execute_query(params, retry_count=retry_count + 1)
 
             if not self.page.query_selector("#ctl00_ContentPlaceHolder1_cboTipoDoc"):
-                self.page.goto(SBS_URL, wait_until="domcontentloaded", timeout=18000)
+                try:
+                    self.page.goto(SBS_URL, wait_until="domcontentloaded", timeout=15000)
+                except Exception:
+                    pass
+                if self.is_imperva_blocked() and retry_count < 3:
+                    print(f"[SBS Worker {self.worker_id}] Captcha/Bloqueo al cargar portal DNI {dni}. Abriendo ventana nueva...")
+                    self.reopen_fresh_window()
+                    return self._execute_query(params, retry_count=retry_count + 1)
 
             # 3. Llenar formulario
             self.page.select_option("#ctl00_ContentPlaceHolder1_cboTipoDoc", "00") # DNI
@@ -249,21 +318,39 @@ class SBSWorkerThread(threading.Thread):
             # 4. Enviar búsqueda
             self.page.click("#ctl00_ContentPlaceHolder1_btnBuscar")
             
-            # Esperar que la red complete el postback nativo de ASP.NET
-            try:
-                self.page.wait_for_load_state('networkidle', timeout=10000)
-                self.page.wait_for_timeout(200)
-            except Exception:
-                self.page.wait_for_timeout(800)
+            # En vez de esperar 1 minuto o reintentar en la misma ventana bloqueada,
+            # detectamos activamente en micro-intervalos si ya respondió la SBS o si saltó el captcha:
+            t_wait_start = time.time()
+            while time.time() - t_wait_start < 12:
+                if self.is_imperva_blocked():
+                    break
+                try:
+                    body_check = self.page.inner_text("body")
+                    if any(k in body_check for k in [
+                        "btnOtro_Registro",
+                        "No se encontraron resultados",
+                        "PROFUTURO", "INTEGRA", "PRIMA", "HABITAT",
+                        "Error: La consulta es sospechosa",
+                        "situación actual es",
+                        "desde el"
+                    ]) or self.page.query_selector("#ctl00_ContentPlaceHolder1_btnOtro_Registro"):
+                        break
+                except Exception:
+                    pass
+                self.page.wait_for_timeout(250)
 
             # 5. Analizar contenido
-            body_text = self.page.inner_text("body")
+            body_text = ""
+            try:
+                body_text = self.page.inner_text("body")
+            except Exception:
+                pass
             elapsed = round(time.time() - t0, 2)
 
-            # Verificar si Imperva saltó tras pulsar Buscar
-            if self.is_imperva_blocked() and retry_count < 2:
-                print(f"[SBS Worker {self.worker_id}] Imperva saltó tras buscar DNI {dni}. Limpiando cookies y reintentando...")
-                self.reset_session_clean()
+            # Si saltó captcha, bloqueo o consulta sospechosa, abrir inmediatamente una nueva ventana limpia
+            if (self.is_imperva_blocked() or "Error: La consulta es sospechosa" in body_text) and retry_count < 3:
+                print(f"[SBS Worker {self.worker_id}] Captcha/Bloqueo tras buscar DNI {dni}. Abriendo ventana nueva y reintentando...")
+                self.reopen_fresh_window()
                 return self._execute_query(params, retry_count=retry_count + 1)
 
             if "No se encontraron resultados" in body_text:
@@ -280,10 +367,6 @@ class SBSWorkerThread(threading.Thread):
                 }
 
             if "Error: La consulta es sospechosa" in body_text:
-                # Tratar como imperva soft-block
-                if retry_count < 2:
-                    self.reset_session_clean()
-                    return self._execute_query(params, retry_count=retry_count + 1)
                 return {
                     'afiliado_spp': None,
                     'afp': 'ERROR',
@@ -401,7 +484,7 @@ class SBSServiceManager:
 
     def _update_worker_pool(self, target_concurrency):
         with self._lock:
-            target_concurrency = max(1, min(3, target_concurrency))
+            target_concurrency = max(1, min(8, int(target_concurrency)))
             current_len = len(self.workers)
 
             if target_concurrency > current_len:

@@ -1535,6 +1535,113 @@ body {
 }
 
 /* ==========================================================================
+   Selector de Ventanas Simultáneas Modificable
+   ========================================================================== */
+.concurrency-badge {
+  font-size: 11px;
+  font-weight: 700;
+  background-color: #E0E7FF;
+  color: #3730A3;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #C7D2FE;
+}
+
+.concurrency-stepper-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.concurrency-stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: white;
+  width: fit-content;
+  overflow: hidden;
+}
+
+.btn-stepper {
+  background: #F8FAFC;
+  border: none;
+  width: 40px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-main);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-stepper:hover {
+  background: #E2E8F0;
+  color: var(--mpfn-blue-primary);
+}
+
+.btn-stepper:active {
+  background: #CBD5E1;
+}
+
+.stepper-input {
+  width: 52px;
+  height: 38px;
+  border: none;
+  border-left: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--mpfn-blue-primary);
+  background: white;
+}
+
+.stepper-input:focus {
+  outline: none;
+}
+
+.concurrency-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.btn-preset {
+  background: white;
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-preset:hover {
+  border-color: var(--mpfn-blue-primary);
+  color: var(--mpfn-blue-primary);
+  background: #EFF6FF;
+}
+
+.btn-preset.active {
+  background: var(--mpfn-blue-primary);
+  border-color: var(--mpfn-blue-primary);
+  color: white;
+  font-weight: 600;
+}
+
+.config-helper-text {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-top: 6px;
+  margin-bottom: 0;
+}
+
+/* ==========================================================================
    Estilos de Impresión / Exportación PDF
    ========================================================================== */
 @media print {

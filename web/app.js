@@ -766,14 +766,54 @@ document.addEventListener('DOMContentLoaded', () => {
   // Configuración de Consulta SBS (Modal Simplificado para Usuario Administrativo)
   function initScrapingConfig() {
     const cfgVisibleBrowser = document.getElementById('cfgVisibleBrowser');
+    const cfgConcurrencyInput = document.getElementById('cfgConcurrencyInput');
+    const cfgConcurrencyBadge = document.getElementById('cfgConcurrencyBadge');
+    const btnDecConcurrency = document.getElementById('btnDecConcurrency');
+    const btnIncConcurrency = document.getElementById('btnIncConcurrency');
+    const presetButtons = document.querySelectorAll('.btn-preset');
+
+    function setConcurrencyValue(val) {
+      const clamped = Math.max(1, Math.min(8, parseInt(val) || 1));
+      if (cfgConcurrencyInput) cfgConcurrencyInput.value = clamped;
+      if (cfgConcurrencyBadge) {
+        cfgConcurrencyBadge.textContent = `${clamped} ventana${clamped > 1 ? 's activas' : ' activa'}`;
+      }
+      presetButtons.forEach(btn => {
+        if (parseInt(btn.getAttribute('data-val')) === clamped) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+    }
+
+    if (btnDecConcurrency) {
+      btnDecConcurrency.addEventListener('click', () => {
+        const cur = parseInt(cfgConcurrencyInput?.value) || 1;
+        setConcurrencyValue(cur - 1);
+      });
+    }
+
+    if (btnIncConcurrency) {
+      btnIncConcurrency.addEventListener('click', () => {
+        const cur = parseInt(cfgConcurrencyInput?.value) || 1;
+        setConcurrencyValue(cur + 1);
+      });
+    }
+
+    presetButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const val = parseInt(btn.getAttribute('data-val')) || 1;
+        setConcurrencyValue(val);
+      });
+    });
 
     fetch('/api/sbs/config')
       .then(r => r.json())
       .then(d => {
         if (d.concurrency) {
           state.scrapingConfig.concurrency = d.concurrency;
-          const r = document.querySelector(`input[name="speedRadio"][value="${d.concurrency}"]`);
-          if (r) r.checked = true;
+          setConcurrencyValue(d.concurrency);
         }
         if (d.headless !== undefined) {
           state.scrapingConfig.headless = d.headless;
@@ -794,14 +834,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (btnSaveConfig) {
       btnSaveConfig.addEventListener('click', async () => {
-        const selectedRadio = document.querySelector('input[name="speedRadio"]:checked');
-        const conc = selectedRadio ? parseInt(selectedRadio.value) : 1;
+        const conc = Math.max(1, Math.min(8, parseInt(cfgConcurrencyInput?.value) || 1));
         const isVisible = cfgVisibleBrowser ? cfgVisibleBrowser.checked : true;
         const headless = !isVisible;
 
         state.scrapingConfig.concurrency = conc;
         state.scrapingConfig.headless = headless;
-        state.scrapingConfig.delayMs = conc === 2 ? 800 : 1200;
+        state.scrapingConfig.delayMs = conc > 1 ? 500 : 1000;
 
         try {
           await fetch('/api/sbs/config', {
