@@ -405,7 +405,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <td class="col-onp">${onpText}</td>
         <td class="col-cuspp"><code>${w.cuspp_siga || '-'}</code></td>
         <td class="col-semaforo">
-          <span class="semaforo-badge ${semaforoClass}">${w.semaforo_texto}</span>
+          <span class="semaforo-badge ${semaforoClass}">${escapeHtml(w.semaforo_texto).replace(/\n/g, '<br>')}</span>
         </td>
         <td class="col-acciones">
           <button class="btn ${btnActionClass} btn-xs btn-inspect-worker" data-dni="${w.dni}" title="Inspeccionar trabajador">
@@ -517,6 +517,15 @@ document.addEventListener('DOMContentLoaded', () => {
       exportDropdown.classList.add('hidden');
     }
   });
+
+  function escapeHtml(unsafe) {
+    return String(unsafe || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
 
   function escapeXml(unsafe) {
     return String(unsafe || '')
@@ -1089,19 +1098,11 @@ document.addEventListener('DOMContentLoaded', () => {
       sbs.afp === 'RETO RECAPTCHA' ||
       sbs.afp === 'DESCONOCIDO' ||
       sbs.afp === 'VENTANA CERRADA' ||
-      sbs.afp === 'BLOQUEO TEMPORAL SBS'
+      sbs.afp === 'BLOQUEO TEMPORAL SBS' ||
+      sbs.afp === 'ERROR RED'
     )) {
       w.semaforo = 'latencia'; // Siempre semáforo anaranjado
-      if (sbs.estado_sbs === 'RECAPTCHA_CHALLENGE' || sbs.afp === 'RETO RECAPTCHA') {
-        const tries = w.sbs_intentos ? ` (${w.sbs_intentos} intentos)` : '';
-        w.semaforo_texto = `Reto reCAPTCHA${tries} (reintentar)`;
-      } else if (sbs.estado_sbs === 'TIMEOUT') {
-        w.semaforo_texto = 'Tiempo agotado (reintentar)';
-      } else if (sbs.afp === 'VENTANA CERRADA') {
-        w.semaforo_texto = 'Ventana cerrada (reintentar)';
-      } else {
-        w.semaforo_texto = 'Pausa temporal SBS (reintentar)';
-      }
+      w.semaforo_texto = 'Error al consultar';
       return;
     }
 
@@ -1127,15 +1128,12 @@ document.addEventListener('DOMContentLoaded', () => {
       // Afiliado certificado en el SPP
       if (siga.includes(afpCertificada)) {
         w.semaforo = 'coincidente';
-        w.semaforo_texto = `Coincide (${afpCertificada})`;
-      } else if (siga.includes('ONP') || siga.includes('SNP') || siga.includes('19990')) {
-        // En SIGA dice ONP pero en AFPNET/SBS está en AFP -> Discrepancia
-        w.semaforo = 'discrepancia';
-        w.semaforo_texto = `Alerta: en ${origenCertificado} es ${afpCertificada} (SIGA: ONP)`;
+        w.semaforo_texto = 'Verificado';
       } else {
-        // En SIGA dice otra AFP distinta
+        // En SIGA dice otra AFP o dice ONP -> Discrepancia en rojo
         w.semaforo = 'discrepancia';
-        w.semaforo_texto = `Cambio de AFP: ${afpCertificada} (SIGA: ${siga})`;
+        const sbsDisplay = (sbs && sbs.afp && sbs.afp !== 'DESCONOCIDO') ? sbs.afp : afpCertificada;
+        w.semaforo_texto = `SIGA: ${siga || 'SIN REGISTRO'}\nSBS: ${sbsDisplay}`;
       }
       return;
     }
@@ -1150,7 +1148,7 @@ document.addEventListener('DOMContentLoaded', () => {
         w.semaforo_texto = 'Sin afiliación previa';
       } else {
         w.semaforo = 'discrepancia';
-        w.semaforo_texto = `No figura en SPP (SIGA: ${siga})`;
+        w.semaforo_texto = `SIGA: ${siga || 'SIN REGISTRO'}\nSBS: NO REGISTRADO`;
       }
       return;
     }

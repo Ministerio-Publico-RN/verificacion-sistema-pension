@@ -11,6 +11,7 @@ import queue
 import threading
 import subprocess
 from playwright.sync_api import sync_playwright
+from src.siga_parser import clean_mojibake
 
 SBS_URL = "https://servicios.sbs.gob.pe/ReporteSituacionPrevisional/Afil_Consulta.aspx"
 
@@ -283,10 +284,10 @@ class SBSWorkerThread(threading.Thread):
 
     def _execute_query(self, params, retry_count=0):
         dni = params.get('dni', '').strip()
-        ape_pat = params.get('ape_paterno', '').strip()
-        ape_mat = params.get('ape_materno', '').strip()
-        primer_nom = params.get('primer_nombre', '').strip()
-        segundo_nom = params.get('segundo_nombre', '').strip()
+        ape_pat = clean_mojibake(params.get('ape_paterno', ''))
+        ape_mat = clean_mojibake(params.get('ape_materno', ''))
+        primer_nom = clean_mojibake(params.get('primer_nombre', ''))
+        segundo_nom = clean_mojibake(params.get('segundo_nombre', ''))
 
         t0 = time.time()
 

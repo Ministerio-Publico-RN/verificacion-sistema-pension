@@ -8,7 +8,82 @@ import csv
 import struct
 import zipfile
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timedelta
+
+MOJIBAKE_MAP = {
+    '┴': 'Á',
+    '╔': 'É',
+    '═': 'Í',
+    'Ë': 'Ó',
+    '┌': 'Ú',
+    'Ð': 'Ñ',
+    'ð': 'ñ',
+    '±': 'ñ',
+    '¾': 'ó',
+    '²': 'ó',
+    '║': 'º',
+    'Ã¡': 'á',
+    'Ã©': 'é',
+    'Ã\xad': 'í',
+    'Ã³': 'ó',
+    'Ãº': 'ú',
+    'Ã±': 'ñ',
+    'Ã\x81': 'Á',
+    'Ã\x89': 'É',
+    'Ã\x8d': 'Í',
+    'Ã\x93': 'Ó',
+    'Ã\x9a': 'Ú',
+    'Ã\x91': 'Ñ',
+    'Ã¼': 'ü',
+    'Ã\x9c': 'Ü'
+}
+
+def clean_mojibake(val):
+    if not isinstance(val, str):
+        return val
+    for bad, good in MOJIBAKE_MAP.items():
+        if bad in val:
+            val = val.replace(bad, good)
+    return val.strip()
+
+def parse_date_to_dmy(raw_val):
+    if not raw_val:
+        return ''
+    s = str(raw_val).strip()
+    if 'T' in s:
+        s = s.split('T')[0]
+    elif ' ' in s and ':' in s:
+        s = s.split(' ')[0]
+    
+    # 1. Número serial de días de Excel (ej: 35907 -> 22/04/1998)
+    try:
+        num = float(s)
+        if 1000 <= num <= 80000:
+            dt = datetime(1899, 12, 30) + timedelta(days=num)
+            return dt.strftime('%d/%m/%Y')
+    except (ValueError, OverflowError):
+        pass
+
+    # 2. 8 dígitos consecutivos (ej: 19980422 o 22041998)
+    if len(s) == 8 and s.isdigit():
+        y1, y2 = int(s[0:4]), int(s[4:8])
+        if 1900 <= y1 <= 2050:
+            return f"{s[6:8]}/{s[4:6]}/{s[0:4]}"
+        elif 1900 <= y2 <= 2050:
+            return f"{s[0:2]}/{s[2:4]}/{s[4:8]}"
+
+    # 3. Fechas separadas por guiones o barras
+    if '-' in s or '/' in s:
+        sep = '-' if '-' in s else '/'
+        parts = [p.strip() for p in s.split(sep)]
+        if len(parts) == 3:
+            p0, p1, p2 = parts[0], parts[1], parts[2]
+            if len(p0) == 4:
+                return f"{p2.zfill(2)}/{p1.zfill(2)}/{p0}"
+            elif len(p2) == 4:
+                return f"{p0.zfill(2)}/{p1.zfill(2)}/{p2}"
+
+    return s
 
 class SigaParser:
     @staticmethod
@@ -51,7 +126,8 @@ class SigaParser:
                 for name, ftype, flen in fields:
                     raw_val = record_bytes[pos:pos+flen]
                     pos += flen
-                    row[name] = raw_val.decode('latin1', errors='ignore').strip()
+                    val_str = raw_val.decode('latin1', errors='ignore').strip()
+                    row[name] = clean_mojibake(val_str)
                 
                 normalized = SigaParser._normalize_record(row)
                 if normalized and normalized.get('dni'):
@@ -71,7 +147,7 @@ class SigaParser:
         for k, v in raw.items():
             if k is not None:
                 clean_k = str(k).replace('\ufeff', '').strip().upper()
-                clean_v = str(v).strip() if v is not None else ''
+                clean_v = clean_mojibake(str(v).strip()) if v is not None else ''
                 clean_raw[clean_k] = clean_v
 
         # 1. Extraer DNI
@@ -130,6 +206,9 @@ class SigaParser:
                 elif len(words) >= 4:
                     ape_pat, ape_mat, nom_emp = words[0], words[1], " ".join(words[2:])
 
+        ape_pat = clean_mojibake(ape_pat)
+        ape_mat = clean_mojibake(ape_mat)
+        nom_emp = clean_mojibake(nom_emp)
         nom_parts = nom_emp.strip().split()
         primer_nombre = nom_parts[0] if len(nom_parts) > 0 else ''
         segundo_nombre = " ".join(nom_parts[1:]) if len(nom_parts) > 1 else ''
@@ -137,30 +216,43 @@ class SigaParser:
         if not nombre_completo:
             apellidos = f"{ape_pat} {ape_mat}".strip()
             nombre_completo = f"{apellidos}, {nom_emp}".strip(", ") if apellidos and nom_emp else (apellidos or nom_emp)
+        else:
+            nombre_completo = clean_mojibake(nombre_completo)
 
-        # 3. Extraer Fecha de Nacimiento
-        nacim_raw = clean_raw.get('NACIM') or clean_raw.get('FECHA_NACIMIENTO') or clean_raw.get('FEC_NAC') or clean_raw.get('FECHA_NAC') or ''
-        fecha_nac = ''
-        if len(nacim_raw) == 8 and nacim_raw.isdigit():
-            try:
-                dt = datetime.strptime(nacim_raw, "%Y%m%d")
-                fecha_nac = dt.strftime("%d/%m/%Y")
-            except Exception:
-                fecha_nac = f"{nacim_raw[6:8]}/{nacim_raw[4:6]}/{nacim_raw[0:4]}"
-        elif '-' in nacim_raw:
-            parts = nacim_raw.split('-')
-            if len(parts[0]) == 4:
-                fecha_nac = f"{parts[2]}/{parts[1]}/{parts[0]}"
-            else:
-                fecha_nac = nacim_raw
-        elif '/' in nacim_raw:
-            fecha_nac = nacim_raw
+        # 3. Extraer Fecha de Nacimiento (con soporte para números de fecha Excel)
+        nacim_raw = (
+            clean_raw.get('NACIM') or 
+            clean_raw.get('FECHA_NACIMIENTO') or 
+            clean_raw.get('FECHA_DE_NACIMIENTO') or 
+            clean_raw.get('FECHA_NAC') or 
+            clean_raw.get('FEC_NAC') or 
+            clean_raw.get('FEC_NACIM') or 
+            clean_raw.get('FECNAC') or 
+            clean_raw.get('NACIMIENTO') or 
+            clean_raw.get('CUMPLEANOS') or 
+            clean_raw.get('CUMPLEAÑOS') or 
+            clean_raw.get('CUMPLE') or
+            clean_raw.get('F_NAC') or 
+            clean_raw.get('FNAC') or 
+            clean_raw.get('FECHANAC') or ''
+        )
+        if not nacim_raw:
+            for k, v in clean_raw.items():
+                if k.startswith('COL_'): continue
+                k_clean = k.replace('_', ' ').replace('.', '').strip()
+                if any(phrase in k_clean for phrase in ['NACIMIENTO', 'NACIM', 'CUMPLEA', 'FEC NAC', 'BIRTH']):
+                    nacim_raw = str(v).strip()
+                    if nacim_raw:
+                        break
+
+        fecha_nac = parse_date_to_dmy(nacim_raw)
 
         # 4. Régimen previsional en SIGA
         previsiona_siga = clean_raw.get('PREVISIONA') or clean_raw.get('REGIMEN') or clean_raw.get('SISTEMA_PENSION') or clean_raw.get('AFP') or clean_raw.get('REGIMEN_PENSIONARIO') or ''
-        afiliacion_siga = clean_raw.get('AFILIACION') or ''
-        if len(afiliacion_siga) == 8 and afiliacion_siga.isdigit():
-            afiliacion_siga = f"{afiliacion_siga[6:8]}/{afiliacion_siga[4:6]}/{afiliacion_siga[0:4]}"
+        previsiona_siga = clean_mojibake(previsiona_siga)
+        
+        afiliacion_siga = clean_raw.get('AFILIACION') or clean_raw.get('FEC_AFIL') or clean_raw.get('FECHA_AFIL') or ''
+        afiliacion_siga = parse_date_to_dmy(afiliacion_siga)
             
         cuspp_siga = clean_raw.get('CUSPP') or clean_raw.get('COD_CUSPP') or ''
 
@@ -218,10 +310,10 @@ class SigaParser:
                 for si in tree.findall('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}si'):
                     t = si.find('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t')
                     if t is not None and t.text:
-                        shared_strings.append(t.text)
+                        shared_strings.append(clean_mojibake(t.text))
                     else:
                         text = ''.join([elem.text for elem in si.iter('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t') if elem.text])
-                        shared_strings.append(text)
+                        shared_strings.append(clean_mojibake(text))
 
             sheet_name = 'xl/worksheets/sheet1.xml'
             if sheet_name not in z.namelist():
@@ -248,7 +340,7 @@ class SigaParser:
                     elif t == 'inlineStr':
                         it = c.find('.//{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t')
                         if it is not None and it.text: val = it.text
-                    row_dict[col] = val.strip()
+                    row_dict[col] = clean_mojibake(val.strip())
 
                 if not row_dict:
                     continue
@@ -291,7 +383,7 @@ class SigaParser:
             cells = []
             for c in r.findall('ss:Cell', ns):
                 d = c.find('ss:Data', ns)
-                cells.append(d.text.strip() if d is not None and d.text else '')
+                cells.append(clean_mojibake(d.text.strip()) if d is not None and d.text else '')
             if not cells or not any(cells):
                 continue
             if not headers:
@@ -392,7 +484,7 @@ class SigaParser:
                     if rich_count: spos += rich_count * 4
                     if ext_len: spos += ext_len
                     text = s_bytes.decode('utf-16le' if is_utf16 else 'latin1', errors='ignore')
-                    sst.append(text)
+                    sst.append(clean_mojibake(text))
             elif rec_type == 0x00FD: # LABELSST
                 row, col, xf, sst_idx = struct.unpack_from('<HHHI', rec_data, 0)
                 if sst_idx < len(sst): cells[(row, col)] = sst[sst_idx]
@@ -401,7 +493,7 @@ class SigaParser:
                 cch = struct.unpack_from('<H', rec_data, 6)[0]
                 flags = rec_data[8]
                 text = rec_data[9 : 9 + (cch*2 if flags&1 else cch)].decode('utf-16le' if flags&1 else 'latin1', errors='ignore')
-                cells[(row, col)] = text
+                cells[(row, col)] = clean_mojibake(text)
             elif rec_type == 0x0203: # NUMBER
                 row, col, xf, num = struct.unpack_from('<HHHd', rec_data, 0)
                 cells[(row, col)] = str(int(num) if num.is_integer() else num)
