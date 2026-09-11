@@ -95,11 +95,21 @@ class SBSWorkerThread(threading.Thread):
                 time.sleep(remaining)
 
     def is_imperva_blocked(self):
-        """Detecta de forma exhaustiva si el portal SBS fue interceptado por la pantalla de seguridad de Imperva, Incapsula o Captcha"""
+        """
+        Detecta si el portal SBS fue bloqueado de verdad por el WAF Imperva o si la consulta fue rechazada.
+        Evita absolutamente falsos positivos causados por el iframe invisible de Google reCAPTCHA v2 (que siempre está presente en el formulario).
+        """
         try:
             if not self.is_ready or not self.page or self.page.is_closed():
                 return False
-            
+
+            # Si el reporte ya está visible o el botón 'Consultar otro registro' está listo, NO está bloqueado
+            try:
+                if self.page.query_selector("#ctl00_ContentPlaceHolder1_btnOtro_Registro"):
+                    return False
+            except Exception:
+                pass
+
             title = ""
             try:
                 title = (self.page.title() or "").lower()
@@ -112,35 +122,40 @@ class SBSWorkerThread(threading.Thread):
             except Exception:
                 pass
 
-            combined = f"{title} {body_text}"
-            
-            block_signatures = [
-                "additional security check",
-                "imperva",
-                "incapsula",
-                "why am i seeing this page",
-                "hcaptcha",
-                "recaptcha",
-                "soy humano",
-                "verificando si usted es humano",
-                "pardon our interruption",
-                "incident id",
-                "consulta es sospechosa",
-                "request unsuccessful",
-                "access denied",
-                "unusual traffic",
-                "tráfico inusual"
-            ]
+            # Si ya se determinó el resultado de afiliación o no afiliación, NO está bloqueado
+            if any(k in body_text for k in [
+                "reporte de situación previsional",
+                "reporte de situacion previsional",
+                "no se encontraron resultados",
+                "profuturo", "integra", "prima", "habitat",
+                "se encuentra afiliado"
+            ]):
+                return False
 
-            if any(sig in combined for sig in block_signatures):
+            # 1. Mensaje de consulta sospechosa emitido por la SBS
+            if "error: la consulta es sospechosa" in body_text or "consulta sospechosa" in body_text:
                 return True
 
-            # Verificar si existen iframes con retos captcha o challenge
+            # 2. Pantallas de bloqueo perimetral de Imperva / Incapsula
+            imperva_signatures = [
+                "additional security check is required",
+                "why am i seeing this page",
+                "pardon our interruption",
+                "incapsula incident id",
+                "request unsuccessful",
+                "access denied",
+                "unusual traffic from your computer network",
+                "bloqueo de seguridad"
+            ]
+
+            if any(sig in body_text or sig in title for sig in imperva_signatures):
+                return True
+
+            # 3. Solo si reCAPTCHA desplegó un puzzle visual interactivo (bframe visible)
             try:
-                for frame in self.page.frames:
-                    f_url = (frame.url or "").lower()
-                    if any(c in f_url for c in ["captcha", "challenge", "incapsula", "recaptcha", "hcaptcha"]):
-                        return True
+                challenge_box = self.page.query_selector("iframe[src*='bframe']")
+                if challenge_box and challenge_box.is_visible():
+                    return True
             except Exception:
                 pass
 
@@ -335,13 +350,20 @@ class SBSWorkerThread(threading.Thread):
                     break
                 try:
                     body_check = self.page.inner_text("body")
-                    if any(k in body_check for k in [
-                        "btnOtro_Registro",
-                        "No se encontraron resultados",
-                        "PROFUTURO", "INTEGRA", "PRIMA", "HABITAT",
-                        "Error: La consulta es sospechosa",
-                        "situación actual es",
-                        "desde el"
+                    body_upper = body_check.upper()
+                    if any(k in body_upper for k in [
+                        "BTNOTRO_REGISTRO",
+                        "NO SE ENCONTRARON",
+                        "PROFUTURO",
+                        "INTEGRA",
+                        "PRIMA",
+                        "HABITAT",
+                        "ERROR: LA CONSULTA ES SOSPECHOSA",
+                        "SITUACION ACTUAL ES",
+                        "SITUACIÓN ACTUAL ES",
+                        "DESDE EL",
+                        "REPORTE DE SITUAC",
+                        "CUSPP"
                     ]) or self.page.query_selector("#ctl00_ContentPlaceHolder1_btnOtro_Registro"):
                         break
                 except Exception:
