@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verificación del Sistema de Pensiones | Ministerio Público - Fiscalía de la Nación</title>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Barra Superior Institucional -->
+  <header class="mpfn-header">
+    <div class="header-container">
+      <div class="brand-block">
+        <div class="logo-shield">
+          <svg width="34" height="40" viewBox="0 0 34 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M17 1L3 6V18C3 27.5 9 36.3 17 39C25 36.3 31 27.5 31 18V6L17 1Z" fill="#8B0000" stroke="#FFD700" stroke-width="2"/>
+            <path d="M17 8L10 13V20C10 24.5 13 28.5 17 29.8C21 28.5 24 24.5 24 20V13L17 8Z" fill="#0B2F64"/>
+            <circle cx="17" cy="18" r="4" fill="#FFD700"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="entity-super">MINISTERIO PÚBLICO</span>
+          <span class="entity-sub">FISCALÍA DE LA NACIÓN</span>
+        </div>
+      </div>
+      <div class="system-title-block">
+        <h1 class="system-title">Sistema de verificación previsional</h1>
+        <span class="system-subtitle">Validación y acreditación previsional · MPFN</span>
+      </div>
+      <div class="header-actions">
+      </div>
+    </div>
+  </header>
+
+  <!-- Contenedor Principal -->
+  <main class="main-container">
+
+    <!-- Sección de Carga y Configuración -->
+    <section class="section-card upload-section">
+      <div class="card-header">
+        <div class="card-title-group">
+          <h2>Carga de nómina del SIGA</h2>
+        </div>
+        <div class="card-hint">
+          Formatos compatibles: <strong>.DBF</strong> (SIGA), <strong>.CSV</strong> o <strong>.XLSX</strong>
+        </div>
+      </div>
+
+      <div class="upload-grid">
+        <!-- Zona Dropzone -->
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" accept=".dbf,.csv,.xlsx,.xls,.txt" style="display: none;">
+          <div class="dropzone-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+          </div>
+          <p class="dropzone-title">Arrastra el archivo <strong>.DBF</strong> del SIGA aquí</p>
+          <p class="dropzone-sub">o selecciónalo desde tu equipo</p>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnBrowseFile">Seleccionar archivo</button>
+        </div>
+
+        <!-- Opciones de Configuración Rápida -->
+        <div class="config-panel">
+          <div class="config-group">
+            <label class="config-label">Carga rápida de prueba:</label>
+            <button type="button" class="btn btn-institutional w-100" id="btnLoadSample">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+              </svg>
+              Cargar nómina de prueba (altas cas set 2026.DBF)
+            </button>
+          </div>
+
+          <div class="config-group">
+            <label class="config-label">Fuentes de verificación:</label>
+            <div class="sources-toggle-list">
+              <!-- SBS -->
+              <label class="source-item active" id="sourceSBSLabel">
+                <input type="checkbox" id="checkSourceSBS" checked>
+                <div class="source-info">
+                  <div class="source-header">
+                    <span class="source-name">1. SBS (Superintendencia)</span>
+                    <span class="source-tag tag-primary">Prioridad 1</span>
+                  </div>
+                  <span class="source-desc">Consulta individual en línea de afiliación al SPP.</span>
+                </div>
+              </label>
+
+              <!-- AFPNET -->
+              <label class="source-item active" id="sourceAFPNETLabel">
+                <input type="checkbox" id="checkSourceAFPNET" checked>
+                <div class="source-info">
+                  <div class="source-header">
+                    <span class="source-name">2. AFPNET (empleador)</span>
+                    <span class="source-tag tag-success">Prioridad 2</span>
+                  </div>
+                  <span class="source-desc">Cruce masivo oficial de afiliados y comisiones.</span>
+                </div>
+              </label>
+
+              <!-- ONP (Deshabilitado) -->
+              <label class="source-item disabled" id="sourceONPLabel" title="Opción de ONP inhabilitada">
+                <input type="checkbox" id="checkSourceONP" disabled>
+                <div class="source-info">
+                  <div class="source-header">
+                    <span class="source-name">3. ONP (desactualizado)</span>
+                    <span class="source-tag tag-muted">Deshabilitado</span>
+                  </div>
+                  <span class="source-desc">Servicio no disponible en esta versión.</span>
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Barra de archivo cargado activo -->
+      <div class="loaded-file-bar hidden" id="loadedFileBar">
+        <div class="file-icon-badge">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+            <polyline points="13 2 13 9 20 9"></polyline>
+          </svg>
+        </div>
+        <div class="file-details">
+          <span class="file-name" id="loadedFileName">altas cas set 2026.DBF</span>
+          <span class="file-meta" id="loadedFileMeta">133 trabajadores cargados del SIGA</span>
+        </div>
+        <div class="file-actions">
+          <button type="button" class="btn btn-outline-danger btn-xs" id="btnClearFile">Quitar archivo</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Resumen Estadístico / Métricas -->
+    <section class="metrics-grid hidden" id="metricsSection">
+      <div class="metric-card">
+        <div class="metric-icon bg-blue">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+        </div>
+        <div class="metric-data">
+          <span class="metric-num" id="statTotal">0</span>
+          <span class="metric-label">Total de trabajadores</span>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon bg-green">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+          </svg>
+        </div>
+        <div class="metric-data">
+          <span class="metric-num text-success" id="statSPP">0</span>
+          <span class="metric-label">Afiliados a AFP (SPP)</span>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon bg-purple">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+          </svg>
+        </div>
+        <div class="metric-data">
+          <span class="metric-num text-purple" id="statSNP">0</span>
+          <span class="metric-label">Declarados ONP (SIGA)</span>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon bg-orange">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+        </div>
+        <div class="metric-data">
+          <span class="metric-num text-warning" id="statDiscrepancias">0</span>
+          <span class="metric-label">Discrepancias detectadas</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sección de Tabla de Trabajadores -->
+    <section class="section-card table-section hidden" id="tableSection">
+      <div class="table-header-toolbar">
+        <div class="toolbar-left">
+          <div class="search-box">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="searchInput" placeholder="Buscar por DNI o apellidos...">
+          </div>
+
+          <div class="filter-group">
+            <select id="filterStatus" class="select-filter">
+              <option value="all">Todos los registros</option>
+              <option value="discrepancia">Solo discrepancias</option>
+              <option value="coincidente">Solo coincidentes</option>
+              <option value="sin_afiliacion">Sin afiliación previa</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="toolbar-right">
+          <!-- Selector de Columnas Visibles -->
+          <div class="dropdown-wrapper">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="btnToggleColumns">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="9" y1="3" x2="9" y2="21"></line>
+              </svg>
+              Columnas
+            </button>
+            <div class="columns-dropdown hidden" id="columnsDropdown">
+              <div class="dropdown-title">Columnas visibles</div>
+              <label class="col-item"><input type="checkbox" data-col="col-num" checked> #</label>
+              <label class="col-item"><input type="checkbox" data-col="col-trabajador" checked> Trabajador (DNI / nombres)</label>
+              <label class="col-item"><input type="checkbox" data-col="col-nacim" checked> Fec. nacimiento</label>
+              <label class="col-item"><input type="checkbox" data-col="col-siga" checked> Régimen SIGA</label>
+              <label class="col-item"><input type="checkbox" data-col="col-sbs" checked> SBS (SPP)</label>
+              <label class="col-item"><input type="checkbox" data-col="col-afpnet" checked> AFPNET</label>
+              <label class="col-item"><input type="checkbox" data-col="col-onp"> ONP (SNP)</label>
+              <label class="col-item"><input type="checkbox" data-col="col-cuspp" checked> CUSPP</label>
+              <label class="col-item"><input type="checkbox" data-col="col-semaforo" checked> Estado</label>
+            </div>
+          </div>
+
+          <!-- Botón y Menú de Exportar Multiformato -->
+          <div class="dropdown-wrapper">
+            <button type="button" class="btn btn-outline-success btn-sm" id="btnExportToggle">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Exportar reporte ▾
+            </button>
+            <div class="export-dropdown hidden" id="exportDropdown">
+              <button type="button" class="export-opt-btn" id="btnExportExcel">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#107C41" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line><line x1="10" y1="9" x2="8" y2="9"></line></svg>
+                Formato Excel (.xls)
+              </button>
+              <button type="button" class="export-opt-btn" id="btnExportPDF">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#E11D48" stroke-width="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                Formato PDF institucional
+              </button>
+              <button type="button" class="export-opt-btn" id="btnExportCSV">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0B2F64" stroke-width="2"><polyline points="21 8 21 21 3 21 3 8"></polyline><line x1="1" y1="3" x2="23" y2="3"></line><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+                Formato CSV plano
+              </button>
+            </div>
+          </div>
+
+          <!-- Botón de Carga Masiva AFPNET -->
+          <button type="button" class="btn btn-afpnet btn-sm" id="btnAfpnetModalOpen" title="Gestión de carga masiva en AFPNET">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+            Carga masiva AFPNET
+          </button>
+
+          <!-- Botón de Iniciar Verificación SBS y Engranaje de Configuración -->
+          <div class="verify-action-group">
+            <button type="button" class="btn btn-institutional btn-sm" id="btnStartVerify">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+              Consultar en SBS
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm btn-icon" id="btnScrapingConfig" title="Configurar navegadores paralelos y velocidad">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Barra de Progreso en Lote con Cronómetro en Vivo -->
+      <div class="verification-progress-bar hidden" id="verificationProgressBar">
+        <div class="progress-info">
+          <span class="progress-label" id="progressLabel">Consultando en la SBS...</span>
+          <div class="progress-meta-badges">
+            <span class="progress-timer-badge" id="progressTimerBadge" title="Tiempo transcurrido">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              <span id="verificationTimer">00:00</span>
+            </span>
+            <span class="progress-count" id="progressCount">0 / 0</span>
+          </div>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progressFill" style="width: 0%;"></div>
+        </div>
+      </div>
+
+      <!-- Contenedor con scroll para la tabla -->
+      <div class="table-responsive">
+        <table class="mpfn-table" id="workersTable">
+          <thead>
+            <tr>
+              <th class="col-num">#</th>
+              <th class="col-trabajador">Trabajador (DNI / nombres)</th>
+              <th class="col-nacim">Fec. nacim.</th>
+              <th class="col-siga">Régimen SIGA</th>
+              <th class="col-sbs">SBS (SPP)</th>
+              <th class="col-afpnet">AFPNET</th>
+              <th class="col-onp hidden">ONP (SNP)</th>
+              <th class="col-cuspp">CUSPP</th>
+              <th class="col-semaforo">Estado</th>
+              <th class="col-acciones">Acción</th>
+            </tr>
+          </thead>
+          <tbody id="workersTbody">
+            <!-- Filas dinámicas -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Paginación y contador -->
+      <div class="table-footer">
+        <div class="footer-info">
+          Mostrando <span id="showingStart">0</span> - <span id="showingEnd">0</span> de <span id="showingTotal">0</span> trabajadores
+        </div>
+        <div class="pagination-controls" id="paginationControls">
+          <!-- Botones de página -->
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Pie de página institucional -->
+  <footer class="mpfn-footer">
+    <div class="footer-container">
+      <div class="footer-legal">
+        <span>Ministerio Público - Fiscalía de la Nación del Perú</span>
+        <span class="separator">•</span>
+        <span>Sistema de verificación previsional</span>
+      </div>
+      <div class="footer-version">Versión 1.0</div>
+    </div>
+  </footer>
+
+  <!-- Modal de Ficha Previsional Completa del Trabajador -->
+  <div class="modal-backdrop hidden" id="workerModalBackdrop">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="modal-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+          </div>
+          <div>
+            <h3 class="modal-title">Ficha previsional del trabajador</h3>
+            <span class="modal-subtitle">Ministerio Público - Fiscalía de la Nación</span>
+          </div>
+        </div>
+        <button type="button" class="modal-close-btn" id="btnModalClose">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Tarjeta de Datos Personales del Trabajador -->
+        <div class="worker-summary-card">
+          <div class="worker-avatar">
+            <span id="modalAvatarInitials">--</span>
+          </div>
+          <div class="worker-main-info">
+            <h4 class="worker-name" id="modalWorkerName">Cargando...</h4>
+            <div class="worker-badges">
+              <span class="info-badge"><strong>DNI:</strong> <span id="modalWorkerDni">--</span></span>
+              <span class="info-badge"><strong>Fec. nacim:</strong> <span id="modalWorkerNacim">--</span></span>
+              <span class="info-badge"><strong>Cargo:</strong> <span id="modalWorkerCargo">--</span></span>
+              <span class="info-badge"><strong>Régimen:</strong> <span id="modalWorkerRegimen">--</span></span>
+              <span class="info-badge"><strong>Monto mensual:</strong> <span id="modalWorkerMonto">--</span></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Matriz Comparativa Cruzada de Fuentes (3 fuentes activas) -->
+        <h4 class="section-subtitle">Comparativa de fuentes de validación</h4>
+        <div class="sources-comparison-grid">
+          <!-- 1. SIGA -->
+          <div class="source-card siga-card">
+            <div class="source-card-header">
+              <span class="source-card-title">1. Declarado en SIGA</span>
+              <span class="source-pill pill-siga">Planillas MPFN</span>
+            </div>
+            <div class="source-field">
+              <span class="field-label">Régimen / AFP:</span>
+              <span class="field-value strong" id="modalSigaRegimen">--</span>
+            </div>
+            <div class="source-field">
+              <span class="field-label">Código CUSPP:</span>
+              <span class="field-value mono" id="modalSigaCuspp">--</span>
+            </div>
+            <div class="source-field">
+              <span class="field-label">Fecha afiliación:</span>
+              <span class="field-value" id="modalSigaAfil">--</span>
+            </div>
+          </div>
+
+          <!-- 2. SBS -->
+          <div class="source-card sbs-card">
+            <div class="source-card-header">
+              <span class="source-card-title">2. Consulta SBS</span>
+              <span class="source-pill pill-sbs">Superintendencia</span>
+            </div>
+            <div class="source-field">
+              <span class="field-label">AFP oficial:</span>
+              <span class="field-value strong" id="modalSbsAfp">--</span>
+            </div>
+            <div class="source-field">
+              <span class="field-label">CUSPP oficial:</span>
+              <span class="field-value mono" id="modalSbsCuspp">--</span>
+            </div>
+            <div class="source-field">
+              <span class="field-label">Fecha afiliación:</span>
+              <span class="field-value" id="modalSbsFecha">--</span>
+            </div>
+            <div class="source-field">
+              <span class="field-label">Situación SPP:</span>
+              <span class="field-value" id="modalSbsSituacion">--</span>
+            </div>
+          </div>
+
+          <!-- 3. AFPNET -->
+          <div class="source-card afpnet-card">
+            <div class="source-card-header">
+              <span class="source-card-title">3. Portal AFPNET</span>
+              <span class="source-pill pill-afpnet">Empleador</span>
+            </div>
+            <div class="source-field">
+              <span class="field-label">AFP / Régimen:</span>
+              <span class="field-value strong" id="modalAfpnetPrevisiona">Sin consultar</span>
+            </div>
+            <div class="source-field">
+              <span class="field-label">CUSPP AFPNET:</span>
+              <span class="field-value mono" id="modalAfpnetCuspp">--</span>
+            </div>
+            <div class="source-field">
+              <span class="field-label">Tipo comisión:</span>
+              <span class="field-value" id="modalAfpnetComision">--</span>
+            </div>
+            <div class="source-field">
+              <span class="field-label">Devengue / motivo:</span>
+              <span class="field-value" id="modalAfpnetDevengue">--</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Caja de Dictamen y Recomendación de Pago -->
+        <div class="verdict-box" id="modalVerdictBox">
+          <div class="verdict-icon" id="modalVerdictIcon">●</div>
+          <div class="verdict-content">
+            <h5 class="verdict-title" id="modalVerdictTitle">Evaluando situación previsional...</h5>
+            <p class="verdict-desc" id="modalVerdictDesc">El sistema cruzará la información para autorizar el pago a la entidad correspondiente.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" id="btnModalCloseFooter">Cerrar</button>
+        <button type="button" class="btn btn-institutional" id="btnModalReverifySBS">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+          </svg>
+          Reconsultar SBS
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Gestión y Carga Masiva AFPNET -->
+  <div class="modal-backdrop hidden" id="afpnetModalBackdrop">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-header bg-navy text-white">
+        <div class="modal-title-group">
+          <div class="badge-tag bg-blue-light text-navy">MÓDULO DE EMPLEADOR MPFN</div>
+          <h3 class="modal-title">Carga masiva en AFPNET</h3>
+          <p class="modal-subtitle">Ministerio Público - Fiscalía de la Nación · RUC: <strong>20131370301</strong> (EMP0052)</p>
+        </div>
+        <button type="button" class="btn-modal-close" id="btnAfpnetModalClose">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Pestañas de Operación -->
+        <div class="afpnet-tabs">
+          <button type="button" class="afpnet-tab active" data-tab="tab-import-result">
+            📥 Importar resultado (.xlsx)
+          </button>
+          <button type="button" class="afpnet-tab" data-tab="tab-generate-template">
+            📋 Descargar plantillas (.xls)
+          </button>
+          <button type="button" class="afpnet-tab" data-tab="tab-bot-automation">
+            🤖 Automatizador en pantalla
+          </button>
+        </div>
+
+        <!-- Pestaña 1: Importar Resultado Excel -->
+        <div class="afpnet-tab-content" id="tab-import-result">
+          <div class="alert-box alert-info">
+            <span class="alert-icon">💡</span>
+            <div>
+              <strong>Cruce masivo instantáneo:</strong>
+              Cargue el archivo de respuestas descargado de AFPNET (ejemplo: <code>res_prueba_*.xlsx</code>). El sistema cruzará automáticamente los datos de AFP, CUSPP, comisión y devengues con la nómina institucional.
+            </div>
+          </div>
+
+          <div class="drop-zone" id="dropZoneAfpnetResult" style="padding: 24px; border: 2px dashed #94A3B8; border-radius: 8px; text-align: center; cursor: pointer; background: #F8FAFC;">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="color: #0B2F64; margin-bottom: 8px;">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="12" y1="18" x2="12" y2="12"></line>
+              <line x1="9" y1="15" x2="15" y2="15"></line>
+            </svg>
+            <p class="drop-text" style="font-weight: 600; color: #1E293B; margin-bottom: 4px;">Arrastre aquí el archivo de respuestas (.xlsx) de AFPNET</p>
+            <span class="drop-subtext" style="color: #64748B; font-size: 12px;">o haga clic aquí para seleccionarlo desde su equipo</span>
+            <input type="file" id="afpnetFileInput" accept=".xlsx,.xls" style="display:none;">
+          </div>
+
+          <div class="quick-demo-box" style="margin-top: 14px;">
+            <button type="button" class="btn btn-outline-primary btn-sm w-100" id="btnLoadAfpnetSampleResult">
+              ⚡ Cargar archivo de prueba oficial (docs/archivos_pruebas/res_prueba_1_consultaCUSPPMasiva.xlsx)
+            </button>
+          </div>
+
+          <div id="afpnetResultStatus" class="mt-2 text-center" style="font-size: 13px; font-weight: 600;"></div>
+        </div>
+
+        <!-- Pestaña 2: Generar Plantillas XLS -->
+        <div class="afpnet-tab-content hidden" id="tab-generate-template">
+          <div class="alert-box alert-warning">
+            <span class="alert-icon">⚠️</span>
+            <div>
+              <strong>Límite oficial de AFPNET:</strong>
+              Al consultar con periodo de devengue para conocer la AFP y tipo de comisión, AFPNET admite un máximo de <strong>100 registros por carga</strong>. La nómina ha sido segmentada automáticamente:
+            </div>
+          </div>
+
+          <div class="batches-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 14px;">
+            <div class="batch-card" style="border: 1px solid #E2E8F0; padding: 14px; border-radius: 8px; background: white;">
+              <h5 style="color: #0B2F64; margin-bottom: 4px;">Lote 1 (registros 1 al 100)</h5>
+              <p style="font-size: 12px; color: #64748B; margin-bottom: 10px;">Primeros 100 trabajadores formateados para consulta con devengue en AFPNET.</p>
+              <a href="/api/afpnet/download-template?lote=1" class="btn btn-institutional btn-xs w-100" download style="text-align: center; display: block;">
+                📥 Descargar lote 1 (.xls)
+              </a>
+            </div>
+
+            <div class="batch-card" style="border: 1px solid #E2E8F0; padding: 14px; border-radius: 8px; background: white;">
+              <h5 style="color: #0B2F64; margin-bottom: 4px;">Lote 2 (registros 101 al 133)</h5>
+              <p style="font-size: 12px; color: #64748B; margin-bottom: 10px;">Los 33 trabajadores restantes de la nómina.</p>
+              <a href="/api/afpnet/download-template?lote=2" class="btn btn-institutional btn-xs w-100" download style="text-align: center; display: block;">
+                📥 Descargar lote 2 (.xls)
+              </a>
+            </div>
+
+            <div class="batch-card" style="border: 1px solid #E2E8F0; padding: 14px; border-radius: 8px; background: white;">
+              <h5 style="color: #0B2F64; margin-bottom: 4px;">Nómina completa (133 reg.)</h5>
+              <p style="font-size: 12px; color: #64748B; margin-bottom: 10px;">Para consulta general de CUSPP sin seleccionar devengue.</p>
+              <a href="/api/afpnet/download-template?lote=all" class="btn btn-outline-secondary btn-xs w-100" download style="text-align: center; display: block;">
+                📥 Descargar todo (.xls)
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pestaña 3: Automatizador en Pantalla -->
+        <div class="afpnet-tab-content hidden" id="tab-bot-automation">
+          <div class="bot-steps-card" style="background: #F8FAFC; padding: 16px; border-radius: 8px; border: 1px solid #E2E8F0;">
+            <div style="margin-bottom: 14px;">
+              <div style="font-weight: 700; color: #0B2F64; margin-bottom: 4px;">1. Abrir portal AFPNET en pantalla</div>
+              <p style="font-size: 12px; color: #64748B; margin-bottom: 8px;">Abre Chromium visible en <code>https://www.afpnet.com.pe/</code> y precarga automáticamente el RUC (<code>20131370301</code>), usuario y contraseña.</p>
+              <button type="button" class="btn btn-institutional btn-sm" id="btnAfpnetOpenBrowser">
+                🌐 Abrir ventana con credenciales precargadas
+              </button>
+            </div>
+
+            <div style="margin-bottom: 14px; border-top: 1px dashed #CBD5E1; padding-top: 12px;">
+              <div style="font-weight: 700; color: #0B2F64; margin-bottom: 4px;">2. Resolver captcha de acceso</div>
+              <p style="font-size: 12px; color: #64748B; margin-bottom: 8px;">Puede escribirlo directamente en la ventana de Chromium o ingresarlo aquí:</p>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="text" id="afpnetCaptchaInput" class="form-control" placeholder="Captcha (ej: TRXI)" style="max-width: 160px; text-transform: uppercase; font-weight: 700; letter-spacing: 2px;">
+                <button type="button" class="btn btn-success btn-sm" id="btnAfpnetSubmitLogin">
+                  Ingresar y navegar a consulta masiva
+                </button>
+              </div>
+            </div>
+
+            <div style="border-top: 1px dashed #CBD5E1; padding-top: 12px;">
+              <div style="font-weight: 700; color: #0B2F64; margin-bottom: 4px;">3. Regla de devengue automático</div>
+              <p style="font-size: 12px; color: #475569; margin-bottom: 0;">El sistema seleccionará automáticamente la <strong>2da opción del desplegable</strong> (el devengue más reciente y vigente) al realizar la carga masiva.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" id="btnAfpnetModalCloseFooter">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Configuración de Scraping y Paralelismo -->
+  <div class="modal-backdrop hidden" id="configModalBackdrop">
+    <div class="modal-dialog modal-md">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h3>Configuración de velocidad y paralelismo</h3>
+          <span class="modal-subtitle">Ajuste de ventanas simultáneas y prevención de bloqueo SBS</span>
+        </div>
+        <button type="button" class="btn-close-modal" id="btnCloseConfigModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group mb-4">
+          <label class="form-label">Navegadores simultáneos (ventanas paralelas):</label>
+          <div class="concurrency-selector">
+            <label class="concurrency-option">
+              <input type="radio" name="concurrencyRadio" value="1" checked>
+              <div class="option-card">
+                <span class="option-title">1 ventana</span>
+                <span class="option-sub">Estándar y más segura</span>
+              </div>
+            </label>
+            <label class="concurrency-option">
+              <input type="radio" name="concurrencyRadio" value="2">
+              <div class="option-card">
+                <span class="option-title">2 ventanas (2x)</span>
+                <span class="option-sub">Recomendado para nóminas medianas</span>
+              </div>
+            </label>
+            <label class="concurrency-option">
+              <input type="radio" name="concurrencyRadio" value="3">
+              <div class="option-card">
+                <span class="option-title">3 ventanas (3x)</span>
+                <span class="option-sub">Máxima velocidad</span>
+              </div>
+            </label>
+          </div>
+          <p class="form-hint mt-2">
+            💡 Cada ventana Chromium funciona con su propia sesión limpia aislada para evitar conflictos de cookies de Imperva.
+          </p>
+        </div>
+
+        <div class="form-group mb-4">
+          <label class="form-label" for="cfgDelay">Intervalo de pausa entre consultas (segundos):</label>
+          <select id="cfgDelay" class="select-control">
+            <option value="800">0.8 s (Rápido)</option>
+            <option value="1200" selected>1.2 s (Equilibrado y recomendado)</option>
+            <option value="2000">2.0 s (Prudente anti-bloqueo)</option>
+          </select>
+          <p class="form-hint mt-1">Pausa breve para no saturar el servidor de la SBS ni disparar el hCaptcha.</p>
+        </div>
+
+        <div class="security-info-box">
+          <div class="sec-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <span>Desbloqueo inteligente activo</span>
+          </div>
+          <p>Si la SBS detecta ráfagas y solicita verificación de seguridad, el sistema limpia las cookies de visitante al instante sin esperar 2 minutos.</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" id="btnCancelConfig">Cancelar</button>
+        <button type="button" class="btn btn-institutional btn-sm" id="btnSaveConfig">Guardar configuración</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
