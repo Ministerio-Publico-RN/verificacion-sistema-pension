@@ -220,6 +220,7 @@
               <option value="discrepancia">Solo discrepancias</option>
               <option value="coincidente">Solo coincidentes</option>
               <option value="sin_afiliacion">Sin afiliación previa</option>
+              <option value="pendientes">Pendientes / Reto reCAPTCHA</option>
             </select>
           </div>
         </div>
@@ -317,6 +318,24 @@
         <div class="progress-track">
           <div class="progress-fill" id="progressFill" style="width: 0%;"></div>
         </div>
+      </div>
+
+      <!-- Banner para reejecutar consultas fallidas o con reto reCAPTCHA -->
+      <div class="retry-failed-banner hidden" id="retryFailedBanner">
+        <div class="retry-failed-info">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D97706" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <span id="retryFailedText">Se detectaron consultas no completadas por reto reCAPTCHA o tiempo de espera.</span>
+        </div>
+        <button type="button" class="btn btn-warning btn-sm" id="btnRetryFailed">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+          </svg>
+          Reejecutar consultas no completadas
+        </button>
       </div>
 
       <!-- Contenedor con scroll para la tabla -->
@@ -680,6 +699,15 @@
           <input type="number" id="cfgBlockCooldown" class="form-input-standard" min="10" max="180" step="5" value="45">
           <span class="config-helper-text">
             Tiempo de enfriamiento si el portal de la SBS detecta tráfico temporal. Permite que el portal libere el acceso antes de reanudar automáticamente en una ventana limpia.
+          </span>
+        </div>
+
+        <!-- Reintentos automáticos por trabajador ante reto reCAPTCHA -->
+        <div class="form-group mb-3">
+          <label class="config-label" for="cfgMaxRetries">Reintentos continuos por trabajador ante reto/espera:</label>
+          <input type="number" id="cfgMaxRetries" class="form-input-standard" min="1" max="10" value="5">
+          <span class="config-helper-text">
+            Número de intentos automáticos continuos si el portal muestra reCAPTCHA o demora antes de clasificar el registro como pendiente (predeterminado: 5).
           </span>
         </div>
 

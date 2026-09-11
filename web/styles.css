@@ -585,6 +585,44 @@ body {
   transition: width 0.3s ease;
 }
 
+/* Banner de Reejecución de Consultas No Completadas */
+.retry-failed-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background-color: #FFFBEB;
+  border: 1px solid #FCD34D;
+  border-radius: var(--radius-sm);
+  padding: 10px 16px;
+  margin-top: 4px;
+}
+
+.retry-failed-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #92400E;
+}
+
+.retry-failed-info svg {
+  flex-shrink: 0;
+}
+
+.btn-warning {
+  background-color: #D97706;
+  color: #FFFFFF;
+  border: 1px solid #B45309;
+  font-weight: 600;
+}
+
+.btn-warning:hover {
+  background-color: #B45309;
+  color: #FFFFFF;
+}
+
 /* Tabla Estilo Institucional */
 .table-responsive {
   overflow-x: auto;

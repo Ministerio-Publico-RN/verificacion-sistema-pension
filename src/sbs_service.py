@@ -457,11 +457,26 @@ class SBSWorkerThread(threading.Thread):
                 }
 
             # Identificar AFP
-            afp_detectada = 'DESCONOCIDO'
+            afp_detectada = None
             for afp_name in ['PROFUTURO', 'INTEGRA', 'PRIMA', 'HABITAT']:
                 if afp_name in body_text.upper():
                     afp_detectada = afp_name
                     break
+
+            if not afp_detectada:
+                # Si no figura ninguna AFP válida y tampoco "No se encontraron resultados":
+                # La consulta se topó con un reto de reCAPTCHA, bloqueo o la página no cargó el reporte
+                return {
+                    'afiliado_spp': None,
+                    'afp': 'RETO RECAPTCHA',
+                    'cuspp': '-',
+                    'fecha_afiliacion': '-',
+                    'situacion': 'RETO CAPTCHA',
+                    'estado_sbs': 'RECAPTCHA_CHALLENGE',
+                    'mensaje': 'El portal SBS presentó reCAPTCHA o la respuesta no cargó a tiempo.',
+                    'tiempo_seg': elapsed,
+                    'worker_id': self.worker_id
+                }
 
             # Extraer CUSPP
             m_cuspp = re.search(r'[0-9]{6}[A-Z0-9]{6}', body_text)
@@ -562,6 +577,7 @@ class SBSServiceManager:
         self.headless = False  # Por defecto visible en pantalla para la secretaria
         self.delay_between = 1.0  # Pausa prudencial entre consultas consecutivas
         self.block_cooldown = 45  # Tiempo de enfriamiento si la SBS detecta tráfico
+        self.max_retries = 5     # Reintentos continuos ante reto de captcha o latencia
         self.cooldown_until = 0   # Timestamp hasta cuando el sistema debe estar en pausa
         self.task_queue = queue.Queue()
         self.workers = []
@@ -594,7 +610,7 @@ class SBSServiceManager:
 
             self.concurrency = target_concurrency
 
-    def set_config(self, concurrency=None, headless=None, delay_between=None, block_cooldown=None):
+    def set_config(self, concurrency=None, headless=None, delay_between=None, block_cooldown=None, max_retries=None):
         with self._lock:
             if headless is not None:
                 new_headless = bool(headless)
@@ -608,12 +624,15 @@ class SBSServiceManager:
                 self.delay_between = max(0.0, float(delay_between))
             if block_cooldown is not None:
                 self.block_cooldown = max(5, int(block_cooldown))
+            if max_retries is not None:
+                self.max_retries = max(1, min(10, int(max_retries)))
 
             return {
                 'concurrency': self.concurrency,
                 'headless': self.headless,
                 'delay_between': self.delay_between,
-                'block_cooldown': self.block_cooldown
+                'block_cooldown': self.block_cooldown,
+                'max_retries': self.max_retries
             }
 
     def get_config(self):
@@ -622,7 +641,8 @@ class SBSServiceManager:
                 'concurrency': self.concurrency,
                 'headless': self.headless,
                 'delay_between': getattr(self, 'delay_between', 1.0),
-                'block_cooldown': getattr(self, 'block_cooldown', 45)
+                'block_cooldown': getattr(self, 'block_cooldown', 45),
+                'max_retries': getattr(self, 'max_retries', 5)
             }
 
     def set_concurrency(self, concurrency):

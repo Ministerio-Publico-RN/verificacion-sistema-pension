@@ -19,7 +19,9 @@ document.addEventListener('DOMContentLoaded', () => {
     searchQuery: '',
     scrapingConfig: {
       concurrency: 1,
-      delayMs: 1200
+      delayMs: 1000,
+      maxRetries: 5,
+      blockCooldownSec: 45
     },
     visibleColumns: {
       'col-num': true,
@@ -315,6 +317,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (state.filterStatus === 'discrepancia') return w.semaforo === 'discrepancia';
       if (state.filterStatus === 'coincidente') return w.semaforo === 'coincidente';
       if (state.filterStatus === 'sin_afiliacion') return w.semaforo === 'sin_afiliacion';
+      if (state.filterStatus === 'pendientes') return w.semaforo === 'latencia' || w.semaforo === 'error' || w.semaforo === 'pendiente' || !w.sbs_resultado;
 
       return true;
     });
@@ -769,6 +772,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const cfgConcurrency = document.getElementById('cfgConcurrency');
     const cfgDelayBetween = document.getElementById('cfgDelayBetween');
     const cfgBlockCooldown = document.getElementById('cfgBlockCooldown');
+    const cfgMaxRetries = document.getElementById('cfgMaxRetries');
 
     fetch('/api/sbs/config')
       .then(r => r.json())
@@ -777,11 +781,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (d.headless !== undefined && cfgVisibleBrowser) cfgVisibleBrowser.checked = !d.headless;
         if (d.delay_between !== undefined && cfgDelayBetween) cfgDelayBetween.value = d.delay_between;
         if (d.block_cooldown !== undefined && cfgBlockCooldown) cfgBlockCooldown.value = d.block_cooldown;
+        if (d.max_retries !== undefined && cfgMaxRetries) cfgMaxRetries.value = d.max_retries;
 
         state.scrapingConfig.concurrency = d.concurrency || 1;
         state.scrapingConfig.headless = d.headless || false;
         state.scrapingConfig.delayBetween = d.delay_between !== undefined ? d.delay_between : 1.0;
         state.scrapingConfig.blockCooldown = d.block_cooldown !== undefined ? d.block_cooldown : 45;
+        state.scrapingConfig.maxRetries = d.max_retries || 5;
         state.scrapingConfig.delayMs = Math.round(state.scrapingConfig.delayBetween * 1000);
       })
       .catch(() => {});
@@ -803,11 +809,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const headless = !isVisible;
         const delayBetween = Math.max(0, parseFloat(cfgDelayBetween?.value) || 1.0);
         const blockCooldown = Math.max(5, parseInt(cfgBlockCooldown?.value) || 45);
+        const maxRetries = Math.max(1, Math.min(10, parseInt(cfgMaxRetries?.value) || 5));
 
         state.scrapingConfig.concurrency = conc;
         state.scrapingConfig.headless = headless;
         state.scrapingConfig.delayBetween = delayBetween;
         state.scrapingConfig.blockCooldown = blockCooldown;
+        state.scrapingConfig.maxRetries = maxRetries;
         state.scrapingConfig.delayMs = Math.round(delayBetween * 1000);
 
         try {
@@ -818,7 +826,8 @@ document.addEventListener('DOMContentLoaded', () => {
               concurrency: conc,
               headless: headless,
               delay_between: delayBetween,
-              block_cooldown: blockCooldown
+              block_cooldown: blockCooldown,
+              max_retries: maxRetries
             })
           });
         } catch (e) {
@@ -867,7 +876,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  async function runSBSVerification() {
+  async function runSBSVerification(onlyFailed = false) {
     isVerifying = true;
     cancelVerification = false;
     startTimer();
@@ -881,16 +890,26 @@ document.addEventListener('DOMContentLoaded', () => {
       Detener verificación
     `;
 
+    const retryFailedBanner = document.getElementById('retryFailedBanner');
+    if (retryFailedBanner) retryFailedBanner.classList.add('hidden');
+
     verificationProgressBar.classList.remove('hidden');
     progressLabel.textContent = `Iniciando consulta paralela (${state.scrapingConfig.concurrency} ventana/s)...`;
 
-    const workersToProcess = state.workers.filter(w => !w.sbs_resultado || w.sbs_resultado.estado_sbs !== 'ENCONTRADO');
+    let workersToProcess = [];
+    if (onlyFailed) {
+      workersToProcess = state.workers.filter(w => !w.sbs_resultado || w.semaforo === 'latencia' || w.semaforo === 'error' || (w.sbs_resultado.estado_sbs !== 'ENCONTRADO' && w.sbs_resultado.estado_sbs !== 'NO REGISTRADO'));
+    } else {
+      workersToProcess = state.workers.filter(w => !w.sbs_resultado || (w.sbs_resultado.estado_sbs !== 'ENCONTRADO' && w.sbs_resultado.estado_sbs !== 'NO REGISTRADO'));
+    }
+
     const total = state.workers.length;
     let completed = total - workersToProcess.length;
-    updateProgressBar(completed, total, 'Iniciando...');
+    updateProgressBar(completed, total, onlyFailed ? `Reejecutando ${workersToProcess.length} consultas pendientes/fallidas...` : 'Iniciando...');
 
     let queueIndex = 0;
     const concurrency = Math.min(state.scrapingConfig.concurrency, workersToProcess.length || 1);
+    const maxRetries = state.scrapingConfig.maxRetries || 5;
 
     async function workerTask(workerNum) {
       while (queueIndex < workersToProcess.length && !cancelVerification) {
@@ -898,33 +917,65 @@ document.addEventListener('DOMContentLoaded', () => {
         const w = workersToProcess[currentWorkerIdx];
         if (!w || cancelVerification) break;
 
-        updateProgressBar(completed, total, `[Ventana ${workerNum + 1}] Consultando: ${w.nombre_completo} (${w.dni})`);
-
+        let attempt = 0;
         let sbsRes = null;
-        try {
-          const response = await fetch('/api/sbs/verify-worker', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              dni: w.dni,
-              ape_paterno: w.ape_paterno,
-              ape_materno: w.ape_materno,
-              primer_nombre: w.primer_nombre,
-              segundo_nombre: w.segundo_nombre
-            })
-          });
 
-          sbsRes = await response.json();
-          w.sbs_resultado = sbsRes;
-          evaluateWorkerSemaforo(w);
-        } catch (err) {
-          console.error(`Error al verificar DNI ${w.dni}:`, err);
-          w.sbs_resultado = {
-            afiliado_spp: null,
-            afp: 'ERROR RED',
-            estado_sbs: 'ERROR',
-            mensaje: err.message
-          };
+        // Bucle de reintentos automáticos continuos ante retos de reCAPTCHA o demora
+        while (attempt < maxRetries && !cancelVerification) {
+          attempt++;
+          w.sbs_intentos = attempt;
+
+          if (attempt > 1) {
+            updateProgressBar(completed, total, `[Ventana ${workerNum + 1}] Reintento ${attempt}/${maxRetries} en: ${w.nombre_completo}`);
+          } else {
+            updateProgressBar(completed, total, `[Ventana ${workerNum + 1}] Consultando: ${w.nombre_completo} (${w.dni})`);
+          }
+
+          try {
+            const response = await fetch('/api/sbs/verify-worker', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                dni: w.dni,
+                ape_paterno: w.ape_paterno,
+                ape_materno: w.ape_materno,
+                primer_nombre: w.primer_nombre,
+                segundo_nombre: w.segundo_nombre
+              })
+            });
+
+            sbsRes = await response.json();
+            w.sbs_resultado = sbsRes;
+            evaluateWorkerSemaforo(w);
+          } catch (err) {
+            console.error(`Error al verificar DNI ${w.dni}:`, err);
+            sbsRes = {
+              afiliado_spp: null,
+              afp: 'ERROR RED',
+              estado_sbs: 'ERROR',
+              mensaje: err.message
+            };
+            w.sbs_resultado = sbsRes;
+            evaluateWorkerSemaforo(w);
+          }
+
+          if (cancelVerification) break;
+
+          // Si el resultado es concluyente (ENCONTRADO con AFP válida o NO REGISTRADO)
+          const isSuccess = sbsRes && (
+            (sbsRes.estado_sbs === 'ENCONTRADO' && sbsRes.afp && sbsRes.afp !== 'DESCONOCIDO') ||
+            sbsRes.estado_sbs === 'NO REGISTRADO'
+          );
+
+          if (isSuccess) {
+            break; // Registro resuelto con éxito
+          }
+
+          // Si saltó reCAPTCHA, timeout o error y aún restan intentos:
+          if (attempt < maxRetries && !cancelVerification) {
+            updateProgressBar(completed, total, `[Ventana ${workerNum + 1}] Reto detectado en ${w.nombre_completo}. Reintentando automáticamente (${attempt}/${maxRetries})...`);
+            await new Promise(r => setTimeout(r, 1200));
+          }
         }
 
         if (cancelVerification) break;
@@ -973,12 +1024,46 @@ document.addEventListener('DOMContentLoaded', () => {
       ${cancelVerification ? 'Reanudar verificación SBS' : 'Verificación SBS completada'}
     `;
 
+    // Analizar consultas que no se completaron con éxito
+    const failedWorkers = state.workers.filter(w => {
+      if (!w.sbs_resultado) return false;
+      return (
+        w.semaforo === 'latencia' ||
+        w.semaforo === 'error' ||
+        w.sbs_resultado.estado_sbs === 'RECAPTCHA_CHALLENGE' ||
+        w.sbs_resultado.estado_sbs === 'TIMEOUT' ||
+        w.sbs_resultado.estado_sbs === 'BLOQUEO_SEGURIDAD' ||
+        w.sbs_resultado.afp === 'DESCONOCIDO'
+      );
+    });
+
     if (!cancelVerification) {
-      progressLabel.textContent = `¡Verificación con la SBS completada con éxito! (Tiempo: ${verificationTimer ? verificationTimer.textContent : ''})`;
+      if (failedWorkers.length > 0) {
+        progressLabel.textContent = `Verificación finalizada. Exitosos: ${total - failedWorkers.length}. Pendientes/retos: ${failedWorkers.length} consulta(s).`;
+        if (retryFailedBanner) {
+          const retryFailedText = document.getElementById('retryFailedText');
+          if (retryFailedText) {
+            retryFailedText.textContent = `${failedWorkers.length} consulta(s) no se completaron tras ${maxRetries} intentos por reto reCAPTCHA o tiempo de espera.`;
+          }
+          retryFailedBanner.classList.remove('hidden');
+        }
+      } else {
+        progressLabel.textContent = `¡Verificación con la SBS completada con éxito al 100%! (Tiempo: ${verificationTimer ? verificationTimer.textContent : ''})`;
+        if (retryFailedBanner) retryFailedBanner.classList.add('hidden');
+      }
       fetch('/api/sbs/stop', { method: 'POST' }).catch(() => {});
     } else {
       progressLabel.textContent = `Verificación pausada en el trabajador ${completed} de ${total}.`;
     }
+  }
+
+  // Listener para reejecutar consultas pendientes o fallidas
+  const btnRetryFailed = document.getElementById('btnRetryFailed');
+  if (btnRetryFailed) {
+    btnRetryFailed.addEventListener('click', async () => {
+      if (isVerifying) return;
+      await runSBSVerification(true);
+    });
   }
 
   function updateProgressBar(completed, total, currentText) {
@@ -995,28 +1080,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const sbs = w.sbs_resultado;
     const afpnet = w.afpnet_resultado;
 
-    // 1. Errores y latencias en SBS
-    if (sbs && sbs.afp === 'VENTANA CERRADA') {
-      w.semaforo = 'error';
-      w.semaforo_texto = 'Ventana cerrada (reintentar)';
-      return;
-    }
-
-    if (sbs && (sbs.estado_sbs === 'BLOQUEO_SEGURIDAD' || sbs.situacion === 'PAUSA DE SEGURIDAD')) {
-      w.semaforo = 'warning';
-      w.semaforo_texto = 'Pausa temporal SBS (reintentar)';
-      return;
-    }
-
-    if (sbs && sbs.estado_sbs === 'ERROR') {
-      w.semaforo = 'error';
-      w.semaforo_texto = 'Error en SBS (reintentar)';
-      return;
-    }
-
-    if (sbs && sbs.estado_sbs === 'TIMEOUT') {
-      w.semaforo = 'latencia';
-      w.semaforo_texto = 'Tiempo agotado (reintentar)';
+    // 1. Retos de reCAPTCHA, pausas de seguridad, errores y latencias en SBS
+    if (sbs && (
+      sbs.estado_sbs === 'RECAPTCHA_CHALLENGE' ||
+      sbs.estado_sbs === 'BLOQUEO_SEGURIDAD' ||
+      sbs.estado_sbs === 'TIMEOUT' ||
+      sbs.estado_sbs === 'ERROR' ||
+      sbs.afp === 'RETO RECAPTCHA' ||
+      sbs.afp === 'DESCONOCIDO' ||
+      sbs.afp === 'VENTANA CERRADA' ||
+      sbs.afp === 'BLOQUEO TEMPORAL SBS'
+    )) {
+      w.semaforo = 'latencia'; // Siempre semáforo anaranjado
+      if (sbs.estado_sbs === 'RECAPTCHA_CHALLENGE' || sbs.afp === 'RETO RECAPTCHA') {
+        const tries = w.sbs_intentos ? ` (${w.sbs_intentos} intentos)` : '';
+        w.semaforo_texto = `Reto reCAPTCHA${tries} (reintentar)`;
+      } else if (sbs.estado_sbs === 'TIMEOUT') {
+        w.semaforo_texto = 'Tiempo agotado (reintentar)';
+      } else if (sbs.afp === 'VENTANA CERRADA') {
+        w.semaforo_texto = 'Ventana cerrada (reintentar)';
+      } else {
+        w.semaforo_texto = 'Pausa temporal SBS (reintentar)';
+      }
       return;
     }
 
@@ -1030,7 +1115,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (afpnet.cuspp && afpnet.cuspp !== '-') {
         w.cuspp_siga = afpnet.cuspp;
       }
-    } else if (sbs && sbs.afiliado_spp) {
+    } else if (sbs && sbs.afiliado_spp && sbs.afp && sbs.afp !== 'DESCONOCIDO' && sbs.estado_sbs === 'ENCONTRADO') {
       afpCertificada = (sbs.afp || '').toUpperCase();
       origenCertificado = 'SBS';
       if (sbs.cuspp && sbs.cuspp !== '-') {
@@ -1056,7 +1141,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 3. No figura en SPP (SBS o AFPNET)
-    if ((sbs && !sbs.afiliado_spp) || (afpnet && !afpnet.afiliado_spp)) {
+    if ((sbs && sbs.estado_sbs === 'NO REGISTRADO') || (afpnet && !afpnet.afiliado_spp && afpnet.estado === 'NO REGISTRADO')) {
       if (siga.includes('ONP') || siga.includes('SNP') || siga.includes('19990')) {
         w.semaforo = 'sin_afiliacion';
         w.semaforo_texto = 'No registrado en AFP (posible ONP)';

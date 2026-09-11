@@ -94,12 +94,14 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             headless = params.get('headless')
             delay_between = params.get('delay_between')
             block_cooldown = params.get('block_cooldown')
+            max_retries = params.get('max_retries')
             sbs = get_sbs_service()
             res = sbs.set_config(
                 concurrency=concurrency,
                 headless=headless,
                 delay_between=delay_between,
-                block_cooldown=block_cooldown
+                block_cooldown=block_cooldown,
+                max_retries=max_retries
             )
             self.send_json({'success': True, **res})
         except Exception as e:
