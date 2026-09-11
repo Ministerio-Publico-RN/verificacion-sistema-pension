@@ -11,7 +11,10 @@ import queue
 import threading
 import subprocess
 from playwright.sync_api import sync_playwright
-from src.siga_parser import clean_mojibake
+try:
+    from siga_parser import clean_mojibake
+except ImportError:
+    from src.siga_parser import clean_mojibake
 
 SBS_URL = "https://servicios.sbs.gob.pe/ReporteSituacionPrevisional/Afil_Consulta.aspx"
 
