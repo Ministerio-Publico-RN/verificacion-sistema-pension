@@ -28,7 +28,8 @@ export function WorkerDetailModal({ worker, onClose }) {
             <h4><Landmark size={15} /> Información SIGA (Institucional)</h4>
             <div className="detail-rows">
               <div><strong>Régimen:</strong> {worker.previsiona_siga || 'No especificado'}</div>
-              <div><strong>CUSPP en SIGA:</strong> {worker.cuspp_siga || 'Sin CUSPP'}</div>
+              <div><strong>Fecha Afiliación en SIGA:</strong> <span className="font-mono">{worker.afiliacion_siga || '-'}</span></div>
+              <div><strong>CUSPP en SIGA:</strong> <span className="font-mono">{worker.cuspp_siga || 'Sin CUSPP'}</span></div>
               <div><strong>Fecha Nacimiento:</strong> {worker.fecha_nacimiento || '-'}</div>
               <div><strong>Cargo / Área:</strong> {worker.cargo || worker.dependencia || '-'}</div>
             </div>
@@ -39,8 +40,8 @@ export function WorkerDetailModal({ worker, onClose }) {
             {sbs ? (
               <div className="detail-rows">
                 <div><strong>AFP Certificada:</strong> <span className="text-gold font-bold">{sbs.afp || 'DESCONOCIDO'}</span></div>
-                <div><strong>CUSPP Oficial:</strong> {sbs.cuspp || '-'}</div>
-                <div><strong>Fecha Afiliación:</strong> {sbs.fecha_afiliacion || '-'}</div>
+                <div><strong>Fecha Afiliación Oficial:</strong> <span className="font-mono">{sbs.fecha_afiliacion || '-'}</span></div>
+                <div><strong>CUSPP Oficial:</strong> <span className="font-mono">{sbs.cuspp || '-'}</span></div>
                 <div><strong>Situación:</strong> {sbs.situacion || '-'}</div>
                 {sbs.mensaje && <div className="text-sm text-muted"><strong>Detalle:</strong> {sbs.mensaje}</div>}
               </div>
@@ -64,13 +65,28 @@ export function WorkerDetailModal({ worker, onClose }) {
             <h4>Veredicto de Validación</h4>
             <div className="verdict-content">
               {worker.semaforo === 'coincidente' && (
-                <div className="text-success flex items-center gap-2">
-                  <CheckCircle2 size={18} /> Los registros coinciden plenamente entre el sistema interno y el portal oficial.
+                <div className="text-success flex items-center gap-2 font-medium">
+                  <CheckCircle2 size={18} /> Los registros de AFP, CUSPP y Fecha de Afiliación coinciden plenamente.
                 </div>
               )}
               {worker.semaforo === 'discrepancia' && (
-                <div className="text-danger flex items-center gap-2">
-                  <AlertTriangle size={18} /> Se detectó una discrepancia en el régimen previsional reportado.
+                <div className="text-danger flex flex-col gap-1">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <AlertTriangle size={18} /> Se detectaron discrepancias entre SIGA y la entidad oficial:
+                  </div>
+                  <div className="text-sm mt-1 p-2 rounded bg-danger-subtle border border-danger-subtle font-mono whitespace-pre-line">
+                    {worker.semaforo_texto}
+                  </div>
+                </div>
+              )}
+              {worker.semaforo === 'sin_afiliacion' && (
+                <div className="text-neutral flex items-center gap-2 font-medium">
+                  <ShieldCheck size={18} /> {worker.semaforo_texto || 'No registrado en AFP / Régimen SNP'}
+                </div>
+              )}
+              {worker.semaforo === 'latencia' && (
+                <div className="text-warning flex items-center gap-2 font-medium">
+                  <AlertTriangle size={18} /> {worker.semaforo_texto || 'Error al consultar portal oficial'}
                 </div>
               )}
               {(!worker.semaforo || worker.semaforo === 'sin_verificar') && (

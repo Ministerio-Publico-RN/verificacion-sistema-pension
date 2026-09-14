@@ -251,10 +251,45 @@ class SigaParser:
         previsiona_siga = clean_raw.get('PREVISIONA') or clean_raw.get('REGIMEN') or clean_raw.get('SISTEMA_PENSION') or clean_raw.get('AFP') or clean_raw.get('REGIMEN_PENSIONARIO') or ''
         previsiona_siga = clean_mojibake(previsiona_siga)
         
-        afiliacion_siga = clean_raw.get('AFILIACION') or clean_raw.get('FEC_AFIL') or clean_raw.get('FECHA_AFIL') or ''
-        afiliacion_siga = parse_date_to_dmy(afiliacion_siga)
-            
-        cuspp_siga = clean_raw.get('CUSPP') or clean_raw.get('COD_CUSPP') or ''
+        afiliacion_raw = (
+            clean_raw.get('AFILIACION') or 
+            clean_raw.get('FECHA_AFIL') or 
+            clean_raw.get('FEC_AFIL') or 
+            clean_raw.get('FECHA_AFILIACION') or 
+            clean_raw.get('FEC_AFILIACION') or 
+            clean_raw.get('FEC_AFILIAC') or 
+            clean_raw.get('FECHA_DE_AFILIACION') or 
+            clean_raw.get('F_AFIL') or 
+            clean_raw.get('FAFIL') or 
+            clean_raw.get('FECHAAFIL') or 
+            clean_raw.get('FEC_ING') or 
+            clean_raw.get('FECHA_INGRESO') or ''
+        )
+        if not afiliacion_raw:
+            for k, v in clean_raw.items():
+                if k.startswith('COL_'): continue
+                k_clean = k.replace('_', ' ').replace('.', '').strip()
+                if any(phrase in k_clean for phrase in ['AFILIACION', 'AFIL', 'FECHA AFIL', 'FEC AFIL']):
+                    afiliacion_raw = str(v).strip()
+                    if afiliacion_raw:
+                        break
+
+        afiliacion_siga = parse_date_to_dmy(afiliacion_raw)
+
+        cuspp_siga = (
+            clean_raw.get('CUSPP') or 
+            clean_raw.get('COD_CUSPP') or 
+            clean_raw.get('NUM_CUSPP') or 
+            clean_raw.get('CODIGO_CUSPP') or ''
+        )
+        if not cuspp_siga:
+            for k, v in clean_raw.items():
+                if k.startswith('COL_'): continue
+                k_clean = k.replace('_', ' ').replace('.', '').strip()
+                if 'CUSPP' in k_clean:
+                    cuspp_siga = str(v).strip()
+                    if cuspp_siga:
+                        break
 
         return {
             'dni': dni,

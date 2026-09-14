@@ -1,5 +1,23 @@
 import { useState, useMemo, useCallback } from 'react';
 
+function normalizeDate(d) {
+  if (!d || d === '-' || String(d).includes('SIN') || String(d).includes('N/A')) return '';
+  const s = String(d).trim();
+  const m1 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m1) {
+    return `${m1[1].padStart(2, '0')}/${m1[2].padStart(2, '0')}/${m1[3]}`;
+  }
+  const m2 = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if (m2) {
+    return `${m2[3].padStart(2, '0')}/${m2[2].padStart(2, '0')}/${m2[1]}`;
+  }
+  return s;
+}
+
+function normalizeCuspp(c) {
+  return (c || '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
+}
+
 export function evaluateWorkerSemaforo(w) {
   const siga = (w.previsiona_siga || '').toUpperCase();
   const sbs = w.sbs_resultado;
@@ -26,22 +44,57 @@ export function evaluateWorkerSemaforo(w) {
   }
 
   if (afpCertificada) {
-    if (siga.includes(afpCertificada)) {
-      return { tone: 'coincidente', text: 'Verificado' };
-    }
+    const discrepancies = [];
     const sbsDisplay = (sbs && sbs.afp && sbs.afp !== 'DESCONOCIDO') ? sbs.afp : afpCertificada;
-    return { tone: 'discrepancia', text: `SIGA: ${siga || 'SIN REGISTRO'}\nSBS: ${sbsDisplay}` };
+
+    // A. Comparación de AFP / Régimen
+    if (!siga.includes(afpCertificada)) {
+      discrepancies.push(`AFP distinta (SIGA: ${w.previsiona_siga || 'SIN REGISTRO'} | SBS: ${sbsDisplay})`);
+    }
+
+    // B. Comparación de CUSPP (si SIGA registra CUSPP y la entidad oficial reporta CUSPP)
+    const cusppSiga = normalizeCuspp(w.cuspp_siga);
+    const cusppOficial = normalizeCuspp(sbs?.cuspp || afpnet?.cuspp);
+    if (cusppSiga && cusppSiga.length >= 6 && cusppOficial && cusppOficial.length >= 6) {
+      if (cusppSiga !== cusppOficial) {
+        discrepancies.push(`CUSPP distinto (SIGA: ${w.cuspp_siga} | SBS: ${sbs?.cuspp || afpnet?.cuspp})`);
+      }
+    }
+
+    // C. Comparación de Fecha de Afiliación (si SIGA reporta fecha y SBS reporta fecha)
+    const dateSiga = normalizeDate(w.afiliacion_siga);
+    const dateSbs = normalizeDate(sbs?.fecha_afiliacion);
+    if (dateSiga && dateSbs && dateSbs !== '-') {
+      if (dateSiga !== dateSbs) {
+        discrepancies.push(`Fec. Afiliación distinta (SIGA: ${dateSiga} | SBS: ${dateSbs})`);
+      }
+    }
+
+    if (discrepancies.length > 0) {
+      return { tone: 'discrepancia', text: discrepancies.join('\n') };
+    }
+
+    return { tone: 'coincidente', text: 'Verificado' };
   }
 
   // 3. No figura en SPP
   if ((sbs && sbs.estado_sbs === 'NO REGISTRADO') || (afpnet && !afpnet.afiliado_spp && afpnet.estado === 'NO REGISTRADO')) {
+    const cusppSiga = normalizeCuspp(w.cuspp_siga);
+    if (cusppSiga && cusppSiga.length >= 6) {
+      return { tone: 'discrepancia', text: `SIGA registra CUSPP ${w.cuspp_siga}, pero figura NO REGISTRADO en SBS` };
+    }
+    for (const afpName of ['PRIMA', 'INTEGRA', 'PROFUTURO', 'HABITAT']) {
+      if (siga.includes(afpName)) {
+        return { tone: 'discrepancia', text: `SIGA indica ${w.previsiona_siga}, pero figura NO REGISTRADO en SBS` };
+      }
+    }
     if (siga.includes('ONP') || siga.includes('SNP') || siga.includes('19990')) {
-      return { tone: 'sin_afiliacion', text: 'No registrado en AFP (posible ONP)' };
+      return { tone: 'sin_afiliacion', text: 'No registrado en AFP (coincide con ONP/SNP)' };
     }
     if (!siga || siga.includes('SIN')) {
       return { tone: 'sin_afiliacion', text: 'Sin afiliación previa' };
     }
-    return { tone: 'discrepancia', text: `SIGA indica ${siga}, pero no figura en SPP` };
+    return { tone: 'discrepancia', text: `SIGA indica ${w.previsiona_siga || 'afiliación'}, pero no figura en SPP` };
   }
 
   return { tone: 'sin_verificar', text: 'Pendiente de consulta' };
