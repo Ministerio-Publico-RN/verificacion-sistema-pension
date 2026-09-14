@@ -28,8 +28,8 @@ export function WorkerDetailModal({ worker, onClose }) {
             <h4><Landmark size={15} /> Información SIGA (Institucional)</h4>
             <div className="detail-rows">
               <div><strong>Régimen:</strong> {worker.previsiona_siga || 'No especificado'}</div>
-              <div><strong>Fecha Afiliación en SIGA:</strong> <span className="font-mono">{worker.afiliacion_siga || '-'}</span></div>
-              <div><strong>CUSPP en SIGA:</strong> <span className="font-mono">{worker.cuspp_siga || 'Sin CUSPP'}</span></div>
+              <div><strong>Fecha Afiliación:</strong> <span className="font-mono">{worker.afiliacion_siga || '-'}</span></div>
+              <div><strong>CUSPP:</strong> <span className="font-mono">{worker.cuspp_siga || 'Sin CUSPP'}</span></div>
               <div><strong>Fecha Nacimiento:</strong> {worker.fecha_nacimiento || '-'}</div>
               <div><strong>Cargo / Área:</strong> {worker.cargo || worker.dependencia || '-'}</div>
             </div>
