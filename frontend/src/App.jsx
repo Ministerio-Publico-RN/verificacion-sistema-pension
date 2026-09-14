@@ -10,7 +10,7 @@ import { WorkerDetailModal } from './components/modals/WorkerDetailModal';
 import { LogConsole } from './components/layout/LogConsole';
 import { useWorkers } from './hooks/useWorkers';
 import { useSbsStream } from './hooks/useSbsStream';
-import { exportVisibleReport } from './api/exportApi';
+import { exportVisibleReport, exportAfiliacionReport } from './api/exportApi';
 import { verifyWorkerSBS } from './api/sbsApi';
 import { ArrowRight } from 'lucide-react';
 
@@ -89,6 +89,21 @@ export function App() {
       type: 'success'
     });
   };
+
+  const handleExportAfiliacion = useCallback(() => {
+    const sinAfiliados = workers.filter(w => w.semaforo === 'sin_afiliacion');
+    if (sinAfiliados.length === 0) {
+      alert('No hay registros sin afiliación previa en el padrón.');
+      return;
+    }
+    exportAfiliacionReport(sinAfiliados);
+    addLog({
+      id: Date.now(),
+      time: new Date().toLocaleTimeString('es-PE', { hour12: false }),
+      message: `Reporte oficial de afiliación descargado para ${sinAfiliados.length} trabajadores sin afiliación previa.`,
+      type: 'success'
+    });
+  }, [workers, addLog]);
 
   const handleRetryWorker = useCallback(async (worker) => {
     const nombre = worker.apellidos_nombres || worker.nombre_completo || worker.dni;
@@ -253,6 +268,7 @@ export function App() {
               onPageSizeChange={setPageSize}
               onSelectWorker={setSelectedWorker}
               onExport={handleExport}
+              onExportAfiliacion={handleExportAfiliacion}
               visibleColumns={visibleColumns}
               onToggleColumn={toggleColumn}
               onRetryWorker={handleRetryWorker}
@@ -283,6 +299,7 @@ export function App() {
               onPageSizeChange={setPageSize}
               onSelectWorker={setSelectedWorker}
               onExport={handleExport}
+              onExportAfiliacion={handleExportAfiliacion}
               visibleColumns={visibleColumns}
               onToggleColumn={toggleColumn}
               onBackToVerification={() => setCurrentStep(3)}

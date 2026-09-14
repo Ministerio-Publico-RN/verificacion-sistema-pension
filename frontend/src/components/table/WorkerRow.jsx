@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckCircle2, AlertCircle, Clock, HelpCircle, Eye, RotateCw } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Clock, HelpCircle, ShieldCheck, UserPlus, Eye, RotateCw } from 'lucide-react';
 
 export function WorkerRow({ worker, onSelectWorker, onRetryWorker, visibleColumns = {} }) {
   const [retrying, setRetrying] = useState(false);
@@ -47,10 +47,16 @@ export function WorkerRow({ worker, onSelectWorker, onRetryWorker, visibleColumn
             </button>
           </div>
         );
+      case 'snp':
+        return (
+          <span className="mpfn-badge badge-snp">
+            <ShieldCheck size={13} /> Inscrito en SNP (ONP)
+          </span>
+        );
       case 'sin_afiliacion':
         return (
           <span className="mpfn-badge badge-neutral">
-            <HelpCircle size={13} /> {worker.semaforo_texto || 'No registrado en AFP'}
+            <UserPlus size={13} /> Sin afiliación previa
           </span>
         );
       default:

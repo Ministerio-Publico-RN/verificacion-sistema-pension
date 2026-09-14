@@ -7,6 +7,7 @@ export function TableControls({
   statusFilter,
   onStatusChange,
   onExport,
+  onExportAfiliacion,
   totalCount,
   filteredCount,
   visibleColumns,
@@ -71,15 +72,17 @@ export function TableControls({
           className="mpfn-select"
         >
           <option value="all">Todos los registros ({totalCount})</option>
-          <option value="filter_snp">SNP (ONP)</option>
-          <option value="filter_integra">AFP Integra</option>
-          <option value="filter_prima">AFP Prima</option>
-          <option value="filter_profuturo">AFP Profuturo</option>
-          <option value="filter_habitat">AFP Habitat</option>
-          <option value="filter_blanco">Sin Régimen / En blanco</option>
-          <option value="coincidente">Verificados</option>
+          <option value="coincidente">Validados (Iguales)</option>
           <option value="discrepancia">Discrepancias</option>
           <option value="latencia">Error al consultar</option>
+          <option value="snp">Inscritos en SNP (ONP)</option>
+          <option value="sin_afiliacion">Nuevos sin Afiliación</option>
+          <option value="filter_snp">Padrón: SNP (ONP)</option>
+          <option value="filter_integra">Padrón: AFP Integra</option>
+          <option value="filter_prima">Padrón: AFP Prima</option>
+          <option value="filter_profuturo">Padrón: AFP Profuturo</option>
+          <option value="filter_habitat">Padrón: AFP Habitat</option>
+          <option value="filter_blanco">Padrón: En blanco</option>
         </select>
 
         {statusFilter === 'latencia' && failedCount > 0 && onRetryFailed && (
@@ -92,6 +95,18 @@ export function TableControls({
           >
             <RotateCw size={14} className={isRetryingFailed ? 'animate-spin' : ''} />
             <span>Reintentar fallidos ({failedCount})</span>
+          </button>
+        )}
+
+        {statusFilter === 'sin_afiliacion' && onExportAfiliacion && (
+          <button
+            type="button"
+            className="mpfn-btn-primary mpfn-btn-afiliacion-report"
+            onClick={onExportAfiliacion}
+            title="Descargar reporte de afiliación oficial para trabajadores sin afiliación previa"
+          >
+            <Download size={14} />
+            <span>Reporte Afiliación (.xls)</span>
           </button>
         )}
 

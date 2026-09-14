@@ -1,0 +1,7 @@
+{
+  "concurrency": 10,
+  "headless": false,
+  "delay_between": 2.0,
+  "block_cooldown": 5,
+  "max_retries": 10
+}

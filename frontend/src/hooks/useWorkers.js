@@ -89,9 +89,19 @@ export function evaluateWorkerSemaforo(w) {
       }
     }
     if (siga.includes('ONP') || siga.includes('SNP') || siga.includes('19990')) {
-      return { tone: 'sin_afiliacion', text: 'No registrado en AFP (coincide con ONP/SNP)' };
+      return { tone: 'snp', text: 'Inscrito en SNP (ONP) - No registrado en SBS' };
     }
-    if (!siga || siga.includes('SIN')) {
+    
+    // Verificación de nuevo sin afiliación: Régimen SIGA, Fecha Afiliación y CUSPP en blanco
+    const fechaAfil = (w.afiliacion_siga || '').trim();
+    const isSigaBlank = !siga || siga === '-' || siga.includes('SIN');
+    const isFechaBlank = !fechaAfil || fechaAfil === '-' || fechaAfil.includes('SIN') || fechaAfil.includes('N/A');
+    const isCusppBlank = !cusppSiga || cusppSiga === '-';
+
+    if (isSigaBlank && isFechaBlank && isCusppBlank) {
+      return { tone: 'sin_afiliacion', text: 'Nuevo sin afiliación previsional (Padrón en blanco)' };
+    }
+    if (isSigaBlank) {
       return { tone: 'sin_afiliacion', text: 'Sin afiliación previa' };
     }
     return { tone: 'discrepancia', text: `SIGA indica ${w.previsiona_siga || 'afiliación'}, pero no figura en SPP` };
@@ -149,7 +159,8 @@ export function useWorkers() {
     let iguales = 0; // coincidentes/validados
     let discrepancias = 0;
     let errores = 0; // latencia, captcha no resuelto, timeouts
-    let sinAfiliacion = 0;
+    let snpConfirmados = 0; // Inscritos en SNP validados en SBS como no registrados
+    let sinAfiliacion = 0; // Nuevos sin afiliación en blanco y sin registro en SBS
     let pendientes = 0;
 
     const afpBreakdown = {
@@ -169,6 +180,7 @@ export function useWorkers() {
       if (sem === 'coincidente') iguales++;
       else if (sem === 'discrepancia') discrepancias++;
       else if (sem === 'latencia') errores++;
+      else if (sem === 'snp') snpConfirmados++;
       else if (sem === 'sin_afiliacion') sinAfiliacion++;
       else pendientes++;
 
@@ -200,6 +212,7 @@ export function useWorkers() {
       verificados: iguales,
       discrepancias,
       errores,
+      snpConfirmados,
       sinAfiliacion,
       pendientes,
       pctIguales,
@@ -221,6 +234,7 @@ export function useWorkers() {
       if (statusFilter === 'coincidente') return w.semaforo === 'coincidente';
       if (statusFilter === 'discrepancia') return w.semaforo === 'discrepancia';
       if (statusFilter === 'latencia') return w.semaforo === 'latencia';
+      if (statusFilter === 'snp') return w.semaforo === 'snp';
       if (statusFilter === 'sin_afiliacion') return w.semaforo === 'sin_afiliacion';
       if (statusFilter === 'sin_verificar') return !w.semaforo || w.semaforo === 'sin_verificar';
       // Filtros por composicion del padron

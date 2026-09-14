@@ -4,12 +4,14 @@ import {
   AlertTriangle, 
   AlertOctagon, 
   ShieldCheck, 
+  UserPlus,
   Users, 
   FileSpreadsheet, 
   FileText, 
   ArrowLeft,
   Filter,
-  RotateCw
+  RotateCw,
+  Download
 } from 'lucide-react';
 import { WorkersTable } from '../table/WorkersTable';
 
@@ -30,6 +32,7 @@ export function ResultsStep({
   onPageSizeChange,
   onSelectWorker,
   onExport,
+  onExportAfiliacion,
   visibleColumns,
   onToggleColumn,
   onBackToVerification,
@@ -43,7 +46,8 @@ export function ResultsStep({
     iguales,
     discrepancias,
     errores,
-    sinAfiliacion,
+    snpConfirmados = 0,
+    sinAfiliacion = 0,
     pctIguales,
     afpBreakdown
   } = metrics;
@@ -86,12 +90,21 @@ export function ResultsStep({
       className: 'result-card-error'
     },
     {
-      id: 'sin_afiliacion',
-      title: 'Sin Afiliación SPP',
-      value: sinAfiliacion,
-      subtext: 'Confirmado no registrado (SNP)',
+      id: 'snp',
+      title: 'Inscritos en SNP (ONP)',
+      value: snpConfirmados,
+      subtext: 'Régimen SNP y validado no en SBS',
       icon: ShieldCheck,
-      badge: 'ONP / Sin AFP',
+      badge: 'ONP / D.L. 19990',
+      className: 'result-card-snp'
+    },
+    {
+      id: 'sin_afiliacion',
+      title: 'Nuevos sin Afiliación',
+      value: sinAfiliacion,
+      subtext: 'Padrón en blanco y no en SBS',
+      icon: UserPlus,
+      badge: 'Sin AFP / SNP',
       className: 'result-card-neutral'
     }
   ];
@@ -100,6 +113,7 @@ export function ResultsStep({
   const pctValid = total > 0 ? (iguales / total) * 100 : 0;
   const pctDiscrep = total > 0 ? (discrepancias / total) * 100 : 0;
   const pctErr = total > 0 ? (errores / total) * 100 : 0;
+  const pctSnp = total > 0 ? (snpConfirmados / total) * 100 : 0;
   const pctSinAfil = total > 0 ? (sinAfiliacion / total) * 100 : 0;
 
   return (
@@ -127,6 +141,20 @@ export function ResultsStep({
               <span>Reintentar fallidos ({errores})</span>
             </button>
           )}
+
+          {/* Botón oficial de Reporte de Afiliación solo habilitado para Sin Afiliación */}
+          {statusFilter === 'sin_afiliacion' && (
+            <button
+              className="mpfn-btn-primary mpfn-btn-afiliacion-report"
+              onClick={onExportAfiliacion}
+              title="Descargar reporte de afiliación con formato oficial para trabajadores sin afiliación previa"
+              type="button"
+            >
+              <Download size={15} />
+              <span>Descargar Reporte Afiliación (.xls)</span>
+            </button>
+          )}
+
           <button 
             className="mpfn-btn-outline" 
             onClick={onBackToVerification}
@@ -192,6 +220,7 @@ export function ResultsStep({
             <span className="legend-item"><span className="dot dot-success" /> Coincidentes ({iguales})</span>
             <span className="legend-item"><span className="dot dot-warning" /> Discrepancias ({discrepancias})</span>
             <span className="legend-item"><span className="dot dot-danger" /> Errores ({errores})</span>
+            <span className="legend-item"><span className="dot dot-snp" /> Inscritos SNP ({snpConfirmados})</span>
             <span className="legend-item"><span className="dot dot-info" /> Sin Afiliación ({sinAfiliacion})</span>
           </div>
         </div>
@@ -199,6 +228,7 @@ export function ResultsStep({
           <div className="segment segment-success" style={{ width: `${pctValid}%` }} title={`Coincidentes: ${pctValid.toFixed(1)}%`} />
           <div className="segment segment-warning" style={{ width: `${pctDiscrep}%` }} title={`Discrepancias: ${pctDiscrep.toFixed(1)}%`} />
           <div className="segment segment-danger" style={{ width: `${pctErr}%` }} title={`Errores: ${pctErr.toFixed(1)}%`} />
+          <div className="segment segment-snp" style={{ width: `${pctSnp}%` }} title={`Inscritos SNP: ${pctSnp.toFixed(1)}%`} />
           <div className="segment segment-info" style={{ width: `${pctSinAfil}%` }} title={`Sin Afiliación: ${pctSinAfil.toFixed(1)}%`} />
         </div>
 
@@ -232,6 +262,7 @@ export function ResultsStep({
         onPageSizeChange={onPageSizeChange}
         onSelectWorker={onSelectWorker}
         onExport={onExport}
+        onExportAfiliacion={onExportAfiliacion}
         visibleColumns={visibleColumns}
         onToggleColumn={onToggleColumn}
         onRetryWorker={onRetryWorker}

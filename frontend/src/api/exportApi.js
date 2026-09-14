@@ -59,6 +59,115 @@ export function exportVisibleReport(format = 'xlsx', workers = [], visibleColumn
   }
 }
 
+function escapeXml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+export function exportAfiliacionReport(workers = []) {
+  if (!workers || workers.length === 0) {
+    alert('No hay registros sin afiliación para exportar.');
+    return;
+  }
+
+  const rowsXml = workers.map(w => {
+    const dni = String(w.dni || '').trim().padStart(8, '0');
+    
+    let paterno = (w.ape_paterno || '').trim().toUpperCase();
+    let materno = (w.ape_materno || '').trim().toUpperCase();
+    let nombres = (w.nombres || `${w.primer_nombre || ''} ${w.segundo_nombre || ''}`).trim().toUpperCase();
+
+    if (!paterno && !materno && (w.apellidos_nombres || w.nombre_completo)) {
+      const full = (w.apellidos_nombres || w.nombre_completo).trim();
+      if (full.includes(',')) {
+        const [apels, noms] = full.split(',');
+        const apelParts = apels.trim().split(/\s+/);
+        paterno = apelParts[0] || '';
+        materno = apelParts.slice(1).join(' ') || '';
+        nombres = (noms || '').trim();
+      } else {
+        const parts = full.split(/\s+/);
+        if (parts.length >= 3) {
+          paterno = parts[0];
+          materno = parts[1];
+          nombres = parts.slice(2).join(' ');
+        } else {
+          paterno = parts[0] || '';
+          nombres = parts.slice(1).join(' ') || '';
+        }
+      }
+    }
+
+    const fecNac = (w.fecha_nacimiento || '').trim();
+    const email = (w.email || w.correo || w.raw_data?.EMAIL || w.raw_data?.CORREO || '').trim();
+    const telMovil = (w.celular || w.telefono || w.raw_data?.CELULAR || w.raw_data?.TELEFONO || '').trim();
+    const ubigeo = (w.ubigeo || w.raw_data?.UBIGEO || '').trim();
+
+    return `   <Row>
+    <Cell><Data ss:Type="String">0</Data></Cell>
+    <Cell><Data ss:Type="String">${escapeXml(dni)}</Data></Cell>
+    <Cell><Data ss:Type="String">${escapeXml(nombres)}</Data></Cell>
+    <Cell><Data ss:Type="String">${escapeXml(paterno)}</Data></Cell>
+    <Cell><Data ss:Type="String">${escapeXml(materno)}</Data></Cell>
+    <Cell><Data ss:Type="String">${escapeXml(fecNac)}</Data></Cell>
+    <Cell><Data ss:Type="String">${escapeXml(email)}</Data></Cell>
+    <Cell><Data ss:Type="String"></Data></Cell>
+    <Cell><Data ss:Type="String">${escapeXml(telMovil)}</Data></Cell>
+    <Cell><Data ss:Type="String">${escapeXml(ubigeo)}</Data></Cell>
+    <Cell><Data ss:Type="String"></Data></Cell>
+    <Cell><Data ss:Type="String"></Data></Cell>
+    <Cell><Data ss:Type="String"></Data></Cell>
+    <Cell><Data ss:Type="String"></Data></Cell>
+    <Cell><Data ss:Type="String">20131370301</Data></Cell>
+    <Cell><Data ss:Type="String">MINISTERIO PUBLICO-GERENCIA GENERAL</Data></Cell>
+    <Cell><Data ss:Type="String"></Data></Cell>
+    <Cell><Data ss:Type="String">1</Data></Cell>
+   </Row>`;
+  }).join('\n');
+
+  const xmlContent = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <Worksheet ss:Name="Excel">
+  <Table>
+   <Row>
+    <Cell><Data ss:Type="String">Tipo  de documento de identidad</Data></Cell>
+    <Cell><Data ss:Type="String">Número de Documento de Identidad</Data></Cell>
+    <Cell><Data ss:Type="String">Nombres</Data></Cell>
+    <Cell><Data ss:Type="String">Apellido Paterno</Data></Cell>
+    <Cell><Data ss:Type="String">Apellido Materno</Data></Cell>
+    <Cell><Data ss:Type="String">Fecha de Nacimiento</Data></Cell>
+    <Cell><Data ss:Type="String">Mail Principal</Data></Cell>
+    <Cell><Data ss:Type="String">Teléfono Fijo</Data></Cell>
+    <Cell><Data ss:Type="String">Teléfono Móvil</Data></Cell>
+    <Cell><Data ss:Type="String">Ubigeo</Data></Cell>
+    <Cell><Data ss:Type="String">Tipo Vía</Data></Cell>
+    <Cell><Data ss:Type="String">Nombre Vía</Data></Cell>
+    <Cell><Data ss:Type="String">Tipo Localidad</Data></Cell>
+    <Cell><Data ss:Type="String">Nombre Localidad</Data></Cell>
+    <Cell><Data ss:Type="String">RUC</Data></Cell>
+    <Cell><Data ss:Type="String">Razón Social</Data></Cell>
+    <Cell><Data ss:Type="String">Usuario Agente</Data></Cell>
+    <Cell><Data ss:Type="String">Origen ONP</Data></Cell>
+   </Row>
+${rowsXml}
+  </Table>
+ </Worksheet>
+</Workbook>`;
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  downloadBlob(xmlContent, `reporte_afiliacion_${timestamp}.xls`, 'application/vnd.ms-excel;charset=utf-8;');
+}
+
 function downloadBlob(content, filename, mimeType) {
   const blob = new Blob([content], { type: mimeType });
   const url = window.URL.createObjectURL(blob);

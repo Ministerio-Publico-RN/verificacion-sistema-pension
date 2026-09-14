@@ -20,6 +20,7 @@ export function WorkersTable({
   onPageSizeChange,
   onSelectWorker,
   onExport,
+  onExportAfiliacion,
   visibleColumns = {},
   onToggleColumn,
   onRetryWorker,
@@ -38,6 +39,7 @@ export function WorkersTable({
         statusFilter={statusFilter}
         onStatusChange={onStatusChange}
         onExport={onExport}
+        onExportAfiliacion={onExportAfiliacion}
         totalCount={totalCount}
         filteredCount={filteredCount}
         visibleColumns={visibleColumns}

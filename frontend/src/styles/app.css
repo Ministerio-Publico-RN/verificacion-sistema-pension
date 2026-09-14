@@ -823,6 +823,16 @@ body {
   color: #475569;
 }
 
+.badge-snp {
+  background-color: #ede9fe;
+  color: #6366f1;
+}
+
+[data-theme="dark"] .badge-snp {
+  background-color: rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+}
+
 .badge-muted {
   background-color: var(--border-color);
   color: var(--text-muted);
@@ -1618,6 +1628,35 @@ body {
   border-color: #0284c7;
 }
 
+.result-card-snp {
+  border-left: 4px solid #6366f1;
+}
+.result-card-snp .result-card-icon-wrap {
+  background: rgba(99, 102, 241, 0.12);
+  color: #6366f1;
+}
+.result-card-snp .result-card-badge {
+  background: rgba(99, 102, 241, 0.15);
+  color: #6366f1;
+}
+.result-card-snp.is-selected {
+  border-color: #6366f1;
+}
+
+.mpfn-btn-afiliacion-report {
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.35);
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.mpfn-btn-afiliacion-report:hover {
+  background: linear-gradient(135deg, #0369a1 0%, #075985 100%) !important;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.45);
+  transform: translateY(-1px);
+}
+
 /* Barra Segmentada de Distribución */
 .mpfn-distribution-card {
   padding: 1.1rem 1.4rem;
@@ -1667,6 +1706,7 @@ body {
 .dot-success { background: var(--color-success); }
 .dot-warning { background: var(--color-warning); }
 .dot-danger { background: var(--color-danger); }
+.dot-snp { background: #6366f1; }
 .dot-info { background: #0284c7; }
 
 .mpfn-segmented-bar {
@@ -1686,6 +1726,7 @@ body {
 .segment-success { background: var(--color-success); }
 .segment-warning { background: var(--color-warning); }
 .segment-danger { background: var(--color-danger); }
+.segment-snp { background: #6366f1; }
 .segment-info { background: #0284c7; }
 
 .afp-chips-row {
