@@ -406,11 +406,6 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
 def run_server(port=8080):
-    try:
-        from sbs_service import ensure_default_desktop
-        ensure_default_desktop()
-    except Exception:
-        pass
     os.makedirs(WEB_DIR, exist_ok=True)
     server_address = ('127.0.0.1', port)
     httpd = ThreadedHTTPServer(server_address, AppRequestHandler)

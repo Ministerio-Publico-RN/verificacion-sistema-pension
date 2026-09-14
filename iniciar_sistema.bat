@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0"
 title Sistema de Verificacion Previsional - MPFN
 echo ======================================================================
 echo    MINISTERIO PUBLICO - FISCALIA DE LA NACION
