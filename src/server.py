@@ -43,7 +43,18 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
         path = parsed.path
 
         if path == '/api/status':
-            self.send_json({'status': 'ok', 'app': 'MPFN Verificación Previsional', 'version': '1.0.0'})
+            desktop_name = "unknown"
+            try:
+                import ctypes
+                u = ctypes.windll.user32
+                k = ctypes.windll.kernel32
+                d = u.GetThreadDesktop(k.GetCurrentThreadId())
+                buf = ctypes.create_unicode_buffer(256)
+                u.GetUserObjectInformationW(d, 2, buf, 256, None)
+                desktop_name = buf.value
+            except Exception:
+                pass
+            self.send_json({'status': 'ok', 'app': 'MPFN Verificación Previsional', 'version': '1.0.0', 'desktop': desktop_name})
         elif path == '/api/sbs/config':
             sbs = get_sbs_service()
             self.send_json(sbs.get_config())
@@ -61,7 +72,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
-        if path == '/api/upload':
+        if path in ('/api/upload', '/api/parse-siga'):
             self.handle_upload()
         elif path == '/api/sbs/config':
             self.handle_sbs_set_config()
@@ -162,7 +173,8 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 'filename': filename,
                 'filepath': target,
                 'total': len(records),
-                'data': records
+                'data': records,
+                'workers': records
             })
         except Exception as e:
             self.send_json({'error': str(e)}, status=500)
@@ -214,7 +226,8 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                     'success': True,
                     'filename': filename,
                     'total': len(records),
-                    'data': records
+                    'data': records,
+                    'workers': records
                 })
             else:
                 self.send_json({'error': 'Tipo de contenido no soportado. Use multipart/form-data'}, status=400)
@@ -393,6 +406,11 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
 def run_server(port=8080):
+    try:
+        from sbs_service import ensure_default_desktop
+        ensure_default_desktop()
+    except Exception:
+        pass
     os.makedirs(WEB_DIR, exist_ok=True)
     server_address = ('127.0.0.1', port)
     httpd = ThreadedHTTPServer(server_address, AppRequestHandler)

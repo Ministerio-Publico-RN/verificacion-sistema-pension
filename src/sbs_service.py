@@ -7,11 +7,18 @@ cookies ante retos de Imperva y cierre inmediato de ventanas.
 import time
 import re
 import os
+import sys
+import tempfile
 import queue
 import threading
 import subprocess
+
+
 from playwright.sync_api import sync_playwright
-from src.siga_parser import clean_mojibake
+try:
+    from siga_parser import clean_mojibake
+except ImportError:
+    from src.siga_parser import clean_mojibake
 
 SBS_URL = "https://servicios.sbs.gob.pe/ReporteSituacionPrevisional/Afil_Consulta.aspx"
 
@@ -21,11 +28,60 @@ def get_window_position(worker_id):
     col = worker_id % cols
     row = (worker_id // cols) % 3
     return {
-        "x": 40 + (col * 350),
-        "y": 40 + (row * 160),
-        "width": 860,
-        "height": 650
+        "x": 60 + (col * 350),
+        "y": 60 + (row * 160),
+        "width": 920,
+        "height": 680
     }
+
+def ensure_default_desktop():
+    """Garantiza que el hilo y procesos derivados estén vinculados al escritorio interactivo visible (WinSta0\\Default)"""
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        DESKTOP_ALL = 0x01FF
+        hdesk = user32.OpenDesktopW("Default", 0, False, DESKTOP_ALL)
+        if hdesk:
+            user32.SetThreadDesktop(hdesk)
+    except Exception:
+        pass
+
+# Vincular escritorio al importar
+ensure_default_desktop()
+
+def bring_window_to_front():
+    """Fuerza a las ventanas visibles de Playwright a colocarse al frente en el escritorio de Windows"""
+    try:
+        ensure_default_desktop()
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        hwnds = []
+
+        def enum_windows_proc(hwnd, lParam):
+            if user32.IsWindowVisible(hwnd):
+                buf = ctypes.create_unicode_buffer(256)
+                user32.GetClassNameW(hwnd, buf, 256)
+                if "Chrome_WidgetWin_1" in buf.value:
+                    title_buf = ctypes.create_unicode_buffer(512)
+                    user32.GetWindowTextW(hwnd, title_buf, 512)
+                    title = title_buf.value
+                    if any(k in title for k in ["Reporte", "Situación", "SBS", "Chromium"]):
+                        hwnds.append(hwnd)
+            return True
+
+        EnumWindowsProc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        user32.EnumWindows(EnumWindowsProc(enum_windows_proc), 0)
+
+        for hwnd in hwnds:
+            user32.ShowWindow(hwnd, 5) # SW_SHOW
+            user32.SetForegroundWindow(hwnd)
+            # Elevar a primer plano y liberar
+            user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002) # HWND_TOPMOST
+            time.sleep(0.04)
+            user32.SetWindowPos(hwnd, -2, 0, 0, 0, 0, 0x0001 | 0x0002) # HWND_NOTOPMOST
+    except Exception:
+        pass
 
 class SBSWorkerThread(threading.Thread):
     def __init__(self, worker_id, task_queue, manager=None):
@@ -40,6 +96,7 @@ class SBSWorkerThread(threading.Thread):
         self.context = None
         self.page = None
         self.is_ready = False
+        self.current_headless = None
 
     def get_headless(self):
         if self.manager and hasattr(self.manager, 'headless'):
@@ -48,14 +105,17 @@ class SBSWorkerThread(threading.Thread):
 
     def init_browser(self, headless=None):
         try:
+            ensure_default_desktop()
             if headless is None:
                 headless = self.get_headless()
+            self.current_headless = headless
 
             if not self.playwright:
                 self.playwright = sync_playwright().start()
             
             pos = get_window_position(self.worker_id)
             win_args = [
+                "--new-window",
                 f"--window-position={pos['x']},{pos['y']}",
                 f"--window-size={pos['width']},{pos['height']}",
                 "--disable-blink-features=AutomationControlled",
@@ -63,28 +123,40 @@ class SBSWorkerThread(threading.Thread):
                 "--lang=es-ES,es"
             ]
 
-            if not self.browser or not self.browser.is_connected():
-                self.browser = self.playwright.chromium.launch(
-                    headless=headless,
-                    slow_mo=20 if not headless else 0,
-                    args=win_args
-                )
+            user_data_dir = os.path.join(tempfile.gettempdir(), f"sbs_mpfn_worker_{self.worker_id}")
+            os.makedirs(user_data_dir, exist_ok=True)
 
-            # Cada worker tiene su propio BrowserContext aislado (cookie jar propio)
-            self.context = self.browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                locale="es-PE",
-                timezone_id="America/Lima",
-                viewport={"width": pos['width'] - 40, "height": pos['height'] - 80}
-            )
+            launch_kwargs = {
+                "user_data_dir": user_data_dir,
+                "headless": headless,
+                "slow_mo": 30 if not headless else 0,
+                "args": win_args,
+                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "locale": "es-PE",
+                "timezone_id": "America/Lima"
+            }
+            if not headless:
+                launch_kwargs["no_viewport"] = True
+            else:
+                launch_kwargs["viewport"] = {"width": pos['width'] - 40, "height": pos['height'] - 80}
+
+            # launch_persistent_context abre ventana física nativa en el escritorio interactivo (evita --no-startup-window)
+            self.context = self.playwright.chromium.launch_persistent_context(**launch_kwargs)
             # Eliminar la marca navigator.webdriver para que Imperva no lo identifique como bot
             self.context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
-            self.page = self.context.new_page()
+            self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
+            if not headless:
+                try:
+                    self.page.bring_to_front()
+                except Exception:
+                    pass
             self.page.goto(SBS_URL, wait_until="domcontentloaded", timeout=25000)
+            if not headless:
+                bring_window_to_front()
             self.is_ready = True
-            modo = "segundo plano (silencioso)" if headless else "ventana visible"
-            print(f"[SBS Worker {self.worker_id}] Chromium listo en {modo}.")
+            modo = "segundo plano (silencioso)" if headless else "ventana visible en pantalla"
+            print(f"[SBS Worker {self.worker_id}] Navegador Chromium listo en {modo}.")
         except Exception as e:
             print(f"[SBS Worker {self.worker_id}] Error al inicializar navegador: {e}")
             self.close_browser()
@@ -204,9 +276,9 @@ class SBSWorkerThread(threading.Thread):
     def is_browser_alive(self):
         """Verifica de forma activa si el navegador y la página siguen abiertos y respondiendo"""
         try:
-            if not self.is_ready or not self.browser or not self.context or not self.page:
+            if not self.is_ready or not self.context or not self.page:
                 return False
-            if not self.browser.is_connected() or self.page.is_closed():
+            if self.page.is_closed():
                 return False
             self.page.evaluate("() => true")
             return True
@@ -214,12 +286,13 @@ class SBSWorkerThread(threading.Thread):
             return False
 
     def ensure_browser(self):
-        """Si la ventana fue cerrada por el usuario o no está lista, la reabre"""
-        if not self.is_browser_alive():
-            modo = "segundo plano" if self.get_headless() else "ventana en pantalla"
-            print(f"[SBS Worker {self.worker_id}] Iniciando navegador ({modo})...")
+        """Si la ventana fue cerrada por el usuario o cambió el modo de visibilidad, la reabre limpiamente"""
+        desired_headless = self.get_headless()
+        if not self.is_browser_alive() or self.current_headless != desired_headless:
+            modo = "segundo plano" if desired_headless else "ventana en pantalla"
+            print(f"[SBS Worker {self.worker_id}] Reconfigurando o iniciando navegador ({modo})...")
             self.close_browser()
-            self.init_browser(headless=self.get_headless())
+            self.init_browser(headless=desired_headless)
 
     def close_browser(self):
         """Cierra el navegador y la página de forma limpia e inmediata"""
@@ -255,6 +328,7 @@ class SBSWorkerThread(threading.Thread):
         self.playwright = None
 
     def run(self):
+        ensure_default_desktop()
         while self.running:
             try:
                 task = self.task_queue.get(timeout=1.0)
@@ -341,6 +415,13 @@ class SBSWorkerThread(threading.Thread):
             }
 
         try:
+            if not self.current_headless:
+                try:
+                    self.page.bring_to_front()
+                    bring_window_to_front()
+                except Exception:
+                    pass
+
             # 1. Si la ventana está en la pantalla del Reporte de Afiliación (con botón "Consultar otro registro"):
             btn_otro = self.page.query_selector("#ctl00_ContentPlaceHolder1_btnOtro_Registro")
             if btn_otro and btn_otro.is_visible():
@@ -648,11 +729,7 @@ class SBSServiceManager:
     def set_config(self, concurrency=None, headless=None, delay_between=None, block_cooldown=None, max_retries=None):
         with self._lock:
             if headless is not None:
-                new_headless = bool(headless)
-                if new_headless != self.headless:
-                    self.headless = new_headless
-                    for w in self.workers:
-                        w.close_browser()
+                self.headless = bool(headless)
             if concurrency is not None:
                 self._update_worker_pool(int(concurrency))
             if delay_between is not None:

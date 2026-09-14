@@ -14,3 +14,8 @@ Thumbs.db
 *.dbf.bak
 uploads/
 web_index.txt
+node_modules/
+.vite/
+recuperar_chat.bat
+
+
