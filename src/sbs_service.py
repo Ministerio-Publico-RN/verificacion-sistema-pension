@@ -7,9 +7,13 @@ cookies ante retos de Imperva y cierre inmediato de ventanas.
 import time
 import re
 import os
+import sys
+import tempfile
 import queue
 import threading
 import subprocess
+
+
 from playwright.sync_api import sync_playwright
 try:
     from siga_parser import clean_mojibake
@@ -24,11 +28,60 @@ def get_window_position(worker_id):
     col = worker_id % cols
     row = (worker_id // cols) % 3
     return {
-        "x": 40 + (col * 350),
-        "y": 40 + (row * 160),
-        "width": 860,
-        "height": 650
+        "x": 60 + (col * 350),
+        "y": 60 + (row * 160),
+        "width": 920,
+        "height": 680
     }
+
+def ensure_default_desktop():
+    """Garantiza que el hilo y procesos derivados estén vinculados al escritorio interactivo visible (WinSta0\\Default)"""
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        DESKTOP_ALL = 0x01FF
+        hdesk = user32.OpenDesktopW("Default", 0, False, DESKTOP_ALL)
+        if hdesk:
+            user32.SetThreadDesktop(hdesk)
+    except Exception:
+        pass
+
+# Vincular escritorio al importar
+ensure_default_desktop()
+
+def bring_window_to_front():
+    """Fuerza a las ventanas visibles de Playwright a colocarse al frente en el escritorio de Windows"""
+    try:
+        ensure_default_desktop()
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        hwnds = []
+
+        def enum_windows_proc(hwnd, lParam):
+            if user32.IsWindowVisible(hwnd):
+                buf = ctypes.create_unicode_buffer(256)
+                user32.GetClassNameW(hwnd, buf, 256)
+                if "Chrome_WidgetWin_1" in buf.value:
+                    title_buf = ctypes.create_unicode_buffer(512)
+                    user32.GetWindowTextW(hwnd, title_buf, 512)
+                    title = title_buf.value
+                    if any(k in title for k in ["Reporte", "Situación", "SBS", "Chromium"]):
+                        hwnds.append(hwnd)
+            return True
+
+        EnumWindowsProc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        user32.EnumWindows(EnumWindowsProc(enum_windows_proc), 0)
+
+        for hwnd in hwnds:
+            user32.ShowWindow(hwnd, 5) # SW_SHOW
+            user32.SetForegroundWindow(hwnd)
+            # Elevar a primer plano y liberar
+            user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002) # HWND_TOPMOST
+            time.sleep(0.04)
+            user32.SetWindowPos(hwnd, -2, 0, 0, 0, 0, 0x0001 | 0x0002) # HWND_NOTOPMOST
+    except Exception:
+        pass
 
 class SBSWorkerThread(threading.Thread):
     def __init__(self, worker_id, task_queue, manager=None):
@@ -43,6 +96,7 @@ class SBSWorkerThread(threading.Thread):
         self.context = None
         self.page = None
         self.is_ready = False
+        self.current_headless = None
 
     def get_headless(self):
         if self.manager and hasattr(self.manager, 'headless'):
@@ -51,14 +105,17 @@ class SBSWorkerThread(threading.Thread):
 
     def init_browser(self, headless=None):
         try:
+            ensure_default_desktop()
             if headless is None:
                 headless = self.get_headless()
+            self.current_headless = headless
 
             if not self.playwright:
                 self.playwright = sync_playwright().start()
             
             pos = get_window_position(self.worker_id)
             win_args = [
+                "--new-window",
                 f"--window-position={pos['x']},{pos['y']}",
                 f"--window-size={pos['width']},{pos['height']}",
                 "--disable-blink-features=AutomationControlled",
@@ -66,28 +123,40 @@ class SBSWorkerThread(threading.Thread):
                 "--lang=es-ES,es"
             ]
 
-            if not self.browser or not self.browser.is_connected():
-                self.browser = self.playwright.chromium.launch(
-                    headless=headless,
-                    slow_mo=20 if not headless else 0,
-                    args=win_args
-                )
+            user_data_dir = os.path.join(tempfile.gettempdir(), f"sbs_mpfn_worker_{self.worker_id}")
+            os.makedirs(user_data_dir, exist_ok=True)
 
-            # Cada worker tiene su propio BrowserContext aislado (cookie jar propio)
-            self.context = self.browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                locale="es-PE",
-                timezone_id="America/Lima",
-                viewport={"width": pos['width'] - 40, "height": pos['height'] - 80}
-            )
+            launch_kwargs = {
+                "user_data_dir": user_data_dir,
+                "headless": headless,
+                "slow_mo": 30 if not headless else 0,
+                "args": win_args,
+                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "locale": "es-PE",
+                "timezone_id": "America/Lima"
+            }
+            if not headless:
+                launch_kwargs["no_viewport"] = True
+            else:
+                launch_kwargs["viewport"] = {"width": pos['width'] - 40, "height": pos['height'] - 80}
+
+            # launch_persistent_context abre ventana física nativa en el escritorio interactivo (evita --no-startup-window)
+            self.context = self.playwright.chromium.launch_persistent_context(**launch_kwargs)
             # Eliminar la marca navigator.webdriver para que Imperva no lo identifique como bot
             self.context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
-            self.page = self.context.new_page()
+            self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
+            if not headless:
+                try:
+                    self.page.bring_to_front()
+                except Exception:
+                    pass
             self.page.goto(SBS_URL, wait_until="domcontentloaded", timeout=25000)
+            if not headless:
+                bring_window_to_front()
             self.is_ready = True
-            modo = "segundo plano (silencioso)" if headless else "ventana visible"
-            print(f"[SBS Worker {self.worker_id}] Chromium listo en {modo}.")
+            modo = "segundo plano (silencioso)" if headless else "ventana visible en pantalla"
+            print(f"[SBS Worker {self.worker_id}] Navegador Chromium listo en {modo}.")
         except Exception as e:
             print(f"[SBS Worker {self.worker_id}] Error al inicializar navegador: {e}")
             self.close_browser()
@@ -207,9 +276,9 @@ class SBSWorkerThread(threading.Thread):
     def is_browser_alive(self):
         """Verifica de forma activa si el navegador y la página siguen abiertos y respondiendo"""
         try:
-            if not self.is_ready or not self.browser or not self.context or not self.page:
+            if not self.is_ready or not self.context or not self.page:
                 return False
-            if not self.browser.is_connected() or self.page.is_closed():
+            if self.page.is_closed():
                 return False
             self.page.evaluate("() => true")
             return True
@@ -217,12 +286,13 @@ class SBSWorkerThread(threading.Thread):
             return False
 
     def ensure_browser(self):
-        """Si la ventana fue cerrada por el usuario o no está lista, la reabre"""
-        if not self.is_browser_alive():
-            modo = "segundo plano" if self.get_headless() else "ventana en pantalla"
-            print(f"[SBS Worker {self.worker_id}] Iniciando navegador ({modo})...")
+        """Si la ventana fue cerrada por el usuario o cambió el modo de visibilidad, la reabre limpiamente"""
+        desired_headless = self.get_headless()
+        if not self.is_browser_alive() or self.current_headless != desired_headless:
+            modo = "segundo plano" if desired_headless else "ventana en pantalla"
+            print(f"[SBS Worker {self.worker_id}] Reconfigurando o iniciando navegador ({modo})...")
             self.close_browser()
-            self.init_browser(headless=self.get_headless())
+            self.init_browser(headless=desired_headless)
 
     def close_browser(self):
         """Cierra el navegador y la página de forma limpia e inmediata"""
@@ -258,6 +328,7 @@ class SBSWorkerThread(threading.Thread):
         self.playwright = None
 
     def run(self):
+        ensure_default_desktop()
         while self.running:
             try:
                 task = self.task_queue.get(timeout=1.0)
@@ -344,34 +415,45 @@ class SBSWorkerThread(threading.Thread):
             }
 
         try:
-            # 1. Si existe el botón "Consultar otro registro", reiniciar formulario
-            try:
-                btn_otro = self.page.query_selector("#ctl00_ContentPlaceHolder1_btnOtro_Registro")
-                if btn_otro and btn_otro.is_visible():
-                    btn_otro.click()
-                    try:
-                        self.page.wait_for_load_state('domcontentloaded', timeout=5000)
-                        self.page.wait_for_timeout(100)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+            if not self.current_headless:
+                try:
+                    self.page.bring_to_front()
+                    bring_window_to_front()
+                except Exception:
+                    pass
 
-            # 2. Verificar si la pantalla quedó bloqueada por captcha antes de llenar
+            # 1. Si la ventana está en la pantalla del Reporte de Afiliación (con botón "Consultar otro registro"):
+            btn_otro = self.page.query_selector("#ctl00_ContentPlaceHolder1_btnOtro_Registro")
+            if btn_otro and btn_otro.is_visible():
+                btn_otro.click()
+                try:
+                    self.page.wait_for_selector("#ctl00_ContentPlaceHolder1_txtNumeroDoc", state="visible", timeout=10000)
+                    self.page.wait_for_timeout(200)
+                except Exception:
+                    pass
+
+            # 2. Si no está visible el formulario ni el botón otro registro, ir a la URL oficial
+            if not self.page.query_selector("#ctl00_ContentPlaceHolder1_txtNumeroDoc"):
+                try:
+                    self.page.goto(SBS_URL, wait_until="domcontentloaded", timeout=15000)
+                    self.page.wait_for_selector("#ctl00_ContentPlaceHolder1_txtNumeroDoc", state="visible", timeout=10000)
+                except Exception:
+                    pass
+
             if self.is_imperva_blocked() and retry_count < 2:
                 self.handle_security_block(dni)
                 return self._execute_query(params, retry_count=retry_count + 1)
 
-            if not self.page.query_selector("#ctl00_ContentPlaceHolder1_cboTipoDoc"):
-                try:
-                    self.page.goto(SBS_URL, wait_until="domcontentloaded", timeout=15000)
-                except Exception:
-                    pass
-                if self.is_imperva_blocked() and retry_count < 2:
-                    self.handle_security_block(dni)
-                    return self._execute_query(params, retry_count=retry_count + 1)
+            # 3. Limpiar cualquier texto de respuesta o mensaje residual del trabajador previo
+            try:
+                self.page.evaluate("""() => {
+                    const msg = document.querySelector('#ctl00_ContentPlaceHolder1_lblMensaje, #ctl00_ContentPlaceHolder1_lblError');
+                    if (msg) msg.textContent = '';
+                }""")
+            except Exception:
+                pass
 
-            # 3. Llenar formulario
+            # 4. Llenar formulario con datos del trabajador actual
             self.page.select_option("#ctl00_ContentPlaceHolder1_cboTipoDoc", "00") # DNI
             self.page.fill("#ctl00_ContentPlaceHolder1_txtNumeroDoc", dni)
             self.page.fill("#ctl00_ContentPlaceHolder1_txtAp_pat", ape_pat)
@@ -379,12 +461,16 @@ class SBSWorkerThread(threading.Thread):
             self.page.fill("#ctl00_ContentPlaceHolder1_txtPri_nom", primer_nom)
             self.page.fill("#ctl00_ContentPlaceHolder1_txtSeg_nom", segundo_nom or "")
 
-            # 4. Enviar búsqueda
+            # 5. Marcar el DOM con el DNI actual para saber cuándo el postback de SBS ha respondido de verdad
+            self.page.evaluate(f"() => document.body.setAttribute('data-sbs-cur-dni', '{dni}')")
+
+            # 6. Enviar búsqueda
             self.page.click("#ctl00_ContentPlaceHolder1_btnBuscar")
             
-            # Detectar activamente en micro-intervalos si ya respondió la SBS o si saltó el captcha:
+            # 7. Esperar activamente en micro-intervalos a que el servidor de la SBS entregue la respuesta
             t_wait_start = time.time()
-            while time.time() - t_wait_start < 12:
+            response_arrived = False
+            while time.time() - t_wait_start < 15:
                 if self.interrupted or not self.running:
                     return {
                         'afiliado_spp': None,
@@ -400,28 +486,30 @@ class SBSWorkerThread(threading.Thread):
                 if self.is_imperva_blocked():
                     break
                 try:
-                    body_check = self.page.inner_text("body")
-                    body_upper = body_check.upper()
-                    if any(k in body_upper for k in [
-                        "BTNOTRO_REGISTRO",
-                        "NO SE ENCONTRARON",
-                        "PROFUTURO",
-                        "INTEGRA",
-                        "PRIMA",
-                        "HABITAT",
-                        "ERROR: LA CONSULTA ES SOSPECHOSA",
-                        "SITUACION ACTUAL ES",
-                        "SITUACIÓN ACTUAL ES",
-                        "DESDE EL",
-                        "REPORTE DE SITUAC",
-                        "CUSPP"
-                    ]) or self.page.query_selector("#ctl00_ContentPlaceHolder1_btnOtro_Registro"):
+                    # Caso A: Se cargó la pantalla de Reporte Oficial (Afiliado encontrado)
+                    btn_otro_now = self.page.query_selector("#ctl00_ContentPlaceHolder1_btnOtro_Registro")
+                    if btn_otro_now and btn_otro_now.is_visible():
+                        response_arrived = True
                         break
+
+                    # Caso B: El postback ha respondido (el atributo data-sbs-cur-dni fue reemplazado por la respuesta del servidor)
+                    attr_marker = self.page.evaluate("() => document.body.getAttribute('data-sbs-cur-dni')")
+                    if not attr_marker:
+                        b_text = self.page.inner_text("body").upper()
+                        if any(k in b_text for k in [
+                            "NO SE ENCONTRARON RESULTADOS",
+                            "PROFUTURO", "INTEGRA", "PRIMA", "HABITAT",
+                            "ERROR: LA CONSULTA ES SOSPECHOSA",
+                            "SE ENCUENTRA AFILIADO",
+                            "REPORTE DE SITUACI"
+                        ]):
+                            response_arrived = True
+                            break
                 except Exception:
                     pass
-                self.page.wait_for_timeout(250)
+                self.page.wait_for_timeout(200)
 
-            # 5. Analizar contenido
+            # 8. Analizar contenido
             body_text = ""
             try:
                 body_text = self.page.inner_text("body")
@@ -434,7 +522,40 @@ class SBSWorkerThread(threading.Thread):
                 self.handle_security_block(dni)
                 return self._execute_query(params, retry_count=retry_count + 1)
 
-            if "No se encontraron resultados" in body_text:
+            # PRIORIDAD 1: Identificar AFP y extraer datos si el trabajador está afiliado
+            afp_detectada = None
+            for afp_name in ['PROFUTURO', 'INTEGRA', 'PRIMA', 'HABITAT']:
+                if afp_name in body_text.upper():
+                    afp_detectada = afp_name
+                    break
+
+            if afp_detectada:
+                # Extraer CUSPP
+                m_cuspp = re.search(r'[0-9]{6}[A-Z0-9]{6}', body_text)
+                cuspp = m_cuspp.group(0) if m_cuspp else '-'
+
+                # Extraer fecha de afiliación (formato DD/MM/YYYY)
+                m_fecha = re.search(r'desde el[\s\|:]*(\d{2}/\d{2}/\d{4})', body_text, re.IGNORECASE)
+                fecha_afil = m_fecha.group(1) if m_fecha else '-'
+
+                # Extraer situación
+                m_sit = re.search(r'situaci[oó]n actual es[\s\|:]*([A-Za-z]+)', body_text, re.IGNORECASE)
+                situacion = m_sit.group(1) if m_sit else 'AFILIADO'
+
+                return {
+                    'afiliado_spp': True,
+                    'afp': afp_detectada,
+                    'cuspp': cuspp,
+                    'fecha_afiliacion': fecha_afil,
+                    'situacion': situacion,
+                    'estado_sbs': 'ENCONTRADO',
+                    'mensaje': f'Afiliado a {afp_detectada} desde {fecha_afil}',
+                    'tiempo_seg': elapsed,
+                    'worker_id': self.worker_id
+                }
+
+            # PRIORIDAD 2: Si confirmó que no se encontraron resultados (NO REGISTRADO verificado)
+            if "No se encontraron resultados" in body_text and response_arrived:
                 return {
                     'afiliado_spp': False,
                     'afp': 'NO REGISTRADO',
@@ -460,27 +581,18 @@ class SBSWorkerThread(threading.Thread):
                     'worker_id': self.worker_id
                 }
 
-            # Identificar AFP
-            afp_detectada = None
-            for afp_name in ['PROFUTURO', 'INTEGRA', 'PRIMA', 'HABITAT']:
-                if afp_name in body_text.upper():
-                    afp_detectada = afp_name
-                    break
-
-            if not afp_detectada:
-                # Si no figura ninguna AFP válida y tampoco "No se encontraron resultados":
-                # La consulta se topó con un reto de reCAPTCHA, bloqueo o la página no cargó el reporte
-                return {
-                    'afiliado_spp': None,
-                    'afp': 'RETO RECAPTCHA',
-                    'cuspp': '-',
-                    'fecha_afiliacion': '-',
-                    'situacion': 'RETO CAPTCHA',
-                    'estado_sbs': 'RECAPTCHA_CHALLENGE',
-                    'mensaje': 'El portal SBS presentó reCAPTCHA o la respuesta no cargó a tiempo.',
-                    'tiempo_seg': elapsed,
-                    'worker_id': self.worker_id
-                }
+            # Si no figura ninguna AFP válida y tampoco "No se encontraron resultados" confirmados:
+            return {
+                'afiliado_spp': None,
+                'afp': 'RETO RECAPTCHA',
+                'cuspp': '-',
+                'fecha_afiliacion': '-',
+                'situacion': 'RETO CAPTCHA',
+                'estado_sbs': 'RECAPTCHA_CHALLENGE',
+                'mensaje': 'El portal SBS presentó reCAPTCHA o la respuesta no cargó a tiempo.',
+                'tiempo_seg': elapsed,
+                'worker_id': self.worker_id
+            }
 
             # Extraer CUSPP
             m_cuspp = re.search(r'[0-9]{6}[A-Z0-9]{6}', body_text)
@@ -617,11 +729,7 @@ class SBSServiceManager:
     def set_config(self, concurrency=None, headless=None, delay_between=None, block_cooldown=None, max_retries=None):
         with self._lock:
             if headless is not None:
-                new_headless = bool(headless)
-                if new_headless != self.headless:
-                    self.headless = new_headless
-                    for w in self.workers:
-                        w.close_browser()
+                self.headless = bool(headless)
             if concurrency is not None:
                 self._update_worker_pool(int(concurrency))
             if delay_between is not None:

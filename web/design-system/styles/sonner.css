@@ -1,0 +1,14 @@
+@import './foundations.css';
+
+/* Shared Sonner skin. Container geometry and motion remain owned by each runtime. */
+[data-sonner-toaster].mpfn-toaster {
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+[data-sonner-toast] {
+  border-radius: var(--mpfn-dimension-radius-card) !important;
+  border: 1px solid var(--mpfn-border-subtle) !important;
+  background: var(--mpfn-surface) !important;
+  color: var(--mpfn-foreground) !important;
+  box-shadow: 0 8px 24px rgb(15 44 82 / 14%) !important;
+}
