@@ -2,7 +2,6 @@ import React, { useState, useCallback } from 'react';
 import { Header } from './components/layout/Header';
 import { WorkflowStepper } from './components/layout/WorkflowStepper';
 import { FileDropzone } from './components/uploader/FileDropzone';
-import { PadronMetricsCards } from './components/metrics/PadronMetricsCards';
 import { SbsPanel } from './components/scrapers/SbsPanel';
 import { ResultsStep } from './components/results/ResultsStep';
 import { WorkersTable } from './components/table/WorkersTable';
@@ -128,13 +127,6 @@ export function App() {
         {/* PASO 2: VISUALIZACIÓN Y REVISIÓN DE DATOS DEL PADRÓN */}
         {currentStep === 2 && (
           <section className="step-view">
-            {/* Desglose del Padrón: Total, SNP, Integra, Prima, Profuturo, Habitat, En blanco */}
-            <PadronMetricsCards
-              workers={workers}
-              activeFilter={statusFilter}
-              onFilterChange={setStatusFilter}
-            />
-
             <div className="step-action-bar">
               <span className="text-muted text-sm">
                 Archivo activo: <strong>{fileName}</strong> ({workers.length} registros listos)

@@ -5,7 +5,7 @@ import { getSbsConfig, saveSbsConfig } from '../../api/sbsApi';
 export function SbsConfigModal({ isOpen, onClose, onConfigSaved }) {
   const [concurrency, setConcurrency] = useState(1);
   const [headless, setHeadless] = useState(false);
-  const [delayMs, setDelayMs] = useState(1000);
+  const [delaySec, setDelaySec] = useState(1.0);
   const [maxRetries, setMaxRetries] = useState(5);
   const [blockCooldownSec, setBlockCooldownSec] = useState(45);
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -16,9 +16,9 @@ export function SbsConfigModal({ isOpen, onClose, onConfigSaved }) {
         if (cfg) {
           setConcurrency(cfg.concurrency || 1);
           setHeadless(Boolean(cfg.headless));
-          setDelayMs(cfg.delay_between || cfg.delay_ms || 1000);
+          setDelaySec(cfg.delay_between !== undefined ? Number(cfg.delay_between) : 1.0);
           setMaxRetries(cfg.max_retries || 5);
-          setBlockCooldownSec(cfg.block_cooldown || cfg.block_cooldown_sec || 45);
+          setBlockCooldownSec(cfg.block_cooldown !== undefined ? Number(cfg.block_cooldown) : 45);
         }
       }).catch(console.warn);
     }
@@ -32,7 +32,7 @@ export function SbsConfigModal({ isOpen, onClose, onConfigSaved }) {
       await saveSbsConfig({
         concurrency: Number(concurrency),
         headless: Boolean(headless),
-        delay_between: Number(delayMs),
+        delay_between: Number(delaySec),
         max_retries: Number(maxRetries),
         block_cooldown: Number(blockCooldownSec)
       });
@@ -100,16 +100,17 @@ export function SbsConfigModal({ isOpen, onClose, onConfigSaved }) {
           </div>
 
           <div className="form-group">
-            <label>Espera entre consultas (milisegundos):</label>
+            <label>Tiempo de espera entre consultas (segundos):</label>
             <input
               type="number"
-              min={200}
-              max={10000}
-              step={100}
-              value={delayMs}
-              onChange={(e) => setDelayMs(e.target.value)}
+              min={0}
+              max={10}
+              step={0.1}
+              value={delaySec}
+              onChange={(e) => setDelaySec(e.target.value)}
               className="mpfn-input"
             />
+            <small className="form-hint">Pausa prudencial entre búsquedas (recomendado: 1.0 a 2.0 s).</small>
           </div>
 
           <div className="form-group">
@@ -128,12 +129,13 @@ export function SbsConfigModal({ isOpen, onClose, onConfigSaved }) {
             <label>Tiempo de enfriamiento ante bloqueos (segundos):</label>
             <input
               type="number"
-              min={10}
+              min={1}
               max={300}
               value={blockCooldownSec}
               onChange={(e) => setBlockCooldownSec(e.target.value)}
               className="mpfn-input"
             />
+            <small className="form-hint">Tiempo mínimo: 1 segundo.</small>
           </div>
 
           <div className="modal-footer">

@@ -77,7 +77,9 @@ export function useSbsStream({ onWorkerUpdate, onLog }) {
     let delayMs = 1000;
     try {
       const cfg = await getSbsConfig();
-      if (cfg?.delay_between) delayMs = cfg.delay_between;
+      if (cfg?.delay_between !== undefined) {
+        delayMs = Math.round(Number(cfg.delay_between) * 1000);
+      }
       if (cfg?.concurrency) setActiveWindows(cfg.concurrency);
     } catch (_) {}
 

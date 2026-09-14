@@ -675,7 +675,7 @@ class SBSServiceManager:
             if delay_between is not None:
                 self.delay_between = max(0.0, float(delay_between))
             if block_cooldown is not None:
-                self.block_cooldown = max(5, int(block_cooldown))
+                self.block_cooldown = max(1, int(block_cooldown))
             if max_retries is not None:
                 self.max_retries = max(1, min(10, int(max_retries)))
 
