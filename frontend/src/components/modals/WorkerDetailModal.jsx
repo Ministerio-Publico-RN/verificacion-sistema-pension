@@ -14,8 +14,12 @@ export function WorkerDetailModal({ worker, onClose }) {
           <div className="modal-title-wrap">
             <User size={18} className="mpfn-text-gold" />
             <div>
-              <h3>{worker.apellidos_nombres}</h3>
-              <p className="scraper-subtitle">DNI: {worker.dni}</p>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-main, #1e293b)', margin: 0 }}>
+                {worker.apellidos_nombres || worker.nombre_completo || `Trabajador (DNI: ${worker.dni})`}
+              </h3>
+              <p className="scraper-subtitle" style={{ margin: '0.2rem 0 0 0', fontSize: '0.825rem', color: 'var(--text-muted, #64748b)' }}>
+                DNI: <strong>{worker.dni}</strong>
+              </p>
             </div>
           </div>
           <button className="modal-close-btn" onClick={onClose} type="button">
@@ -28,8 +32,8 @@ export function WorkerDetailModal({ worker, onClose }) {
             <h4><Landmark size={15} /> Información SIGA (Institucional)</h4>
             <div className="detail-rows">
               <div><strong>Régimen:</strong> {worker.previsiona_siga || 'No especificado'}</div>
-              <div><strong>Fecha Afiliación:</strong> <span className="font-mono">{worker.afiliacion_siga || '-'}</span></div>
-              <div><strong>CUSPP:</strong> <span className="font-mono">{worker.cuspp_siga || 'Sin CUSPP'}</span></div>
+              <div><strong>Fecha Afiliación:</strong> <span className="font-mono">{worker.afiliacion_siga || worker.fecha_afiliacion_siga || worker.fecha_afiliacion || '-'}</span></div>
+              <div><strong>CUSPP:</strong> <span className="font-mono">{worker.cuspp_siga || worker.cuspp || 'Sin CUSPP'}</span></div>
               <div><strong>Fecha Nacimiento:</strong> {worker.fecha_nacimiento || '-'}</div>
               <div><strong>Cargo / Área:</strong> {worker.cargo || worker.dependencia || '-'}</div>
             </div>
