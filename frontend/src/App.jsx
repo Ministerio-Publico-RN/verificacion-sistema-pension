@@ -11,6 +11,7 @@ import { LogConsole } from './components/layout/LogConsole';
 import { useWorkers } from './hooks/useWorkers';
 import { useSbsStream } from './hooks/useSbsStream';
 import { exportVisibleReport } from './api/exportApi';
+import { verifyWorkerSBS } from './api/sbsApi';
 import { ArrowRight } from 'lucide-react';
 
 export function App() {
@@ -89,6 +90,47 @@ export function App() {
     });
   };
 
+  const handleRetryWorker = useCallback(async (worker) => {
+    const nombre = worker.apellidos_nombres || worker.nombre_completo || worker.dni;
+    addLog({
+      id: Date.now(),
+      time: new Date().toLocaleTimeString('es-PE', { hour12: false }),
+      message: `Reintentando consulta SBS para: ${nombre} (${worker.dni})...`,
+      type: 'info'
+    });
+
+    try {
+      const sbsRes = await verifyWorkerSBS(worker);
+      updateWorker(worker.dni, {
+        sbs_resultado: sbsRes,
+        sbs_consultado: true
+      });
+      const afpText = sbsRes?.afp || (sbsRes?.afiliado_spp ? 'ENCONTRADO' : 'NO REGISTRADO');
+      addLog({
+        id: Date.now(),
+        time: new Date().toLocaleTimeString('es-PE', { hour12: false }),
+        message: `[REINTENTO OK] DNI ${worker.dni} -> ${afpText}`,
+        type: 'success'
+      });
+    } catch (err) {
+      addLog({
+        id: Date.now(),
+        time: new Date().toLocaleTimeString('es-PE', { hour12: false }),
+        message: `[REINTENTO ERROR] DNI ${worker.dni}: ${err.message}`,
+        type: 'error'
+      });
+    }
+  }, [addLog, updateWorker]);
+
+  const handleRetryFailed = useCallback(async () => {
+    const failedWorkers = workers.filter(w => w.semaforo === 'latencia');
+    if (failedWorkers.length === 0) {
+      alert('No hay registros con error para reintentar.');
+      return;
+    }
+    await sbs.startScraping(failedWorkers);
+  }, [workers, sbs]);
+
   return (
     <div className="mpfn-app">
       <Header />
@@ -158,6 +200,10 @@ export function App() {
               onExport={handleExport}
               visibleColumns={visibleColumns}
               onToggleColumn={toggleColumn}
+              onRetryWorker={handleRetryWorker}
+              onRetryFailed={handleRetryFailed}
+              isRetryingFailed={sbs.status === 'running'}
+              failedCount={metrics.errores}
             />
           </section>
         )}
@@ -209,6 +255,10 @@ export function App() {
               onExport={handleExport}
               visibleColumns={visibleColumns}
               onToggleColumn={toggleColumn}
+              onRetryWorker={handleRetryWorker}
+              onRetryFailed={handleRetryFailed}
+              isRetryingFailed={sbs.status === 'running'}
+              failedCount={metrics.errores}
             />
           </section>
         )}
@@ -236,6 +286,9 @@ export function App() {
               visibleColumns={visibleColumns}
               onToggleColumn={toggleColumn}
               onBackToVerification={() => setCurrentStep(3)}
+              onRetryWorker={handleRetryWorker}
+              onRetryFailed={handleRetryFailed}
+              isRetryingFailed={sbs.status === 'running'}
             />
           </section>
         )}

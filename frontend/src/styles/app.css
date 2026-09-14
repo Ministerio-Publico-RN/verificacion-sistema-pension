@@ -828,6 +828,48 @@ body {
   color: var(--text-muted);
 }
 
+.semaforo-retry-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.mpfn-btn-icon-retry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid rgba(217, 119, 6, 0.4);
+  background: var(--bg-card, #ffffff);
+  color: #d97706;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mpfn-btn-icon-retry:hover:not(:disabled) {
+  background: #d97706;
+  color: #ffffff;
+  border-color: #d97706;
+  transform: scale(1.08);
+}
+
+.mpfn-btn-icon-retry:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
 .mpfn-badge-multiline {
   padding: 0.35rem 0.6rem;
   border-radius: 6px;

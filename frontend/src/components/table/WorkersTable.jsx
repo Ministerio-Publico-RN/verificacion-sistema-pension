@@ -21,7 +21,11 @@ export function WorkersTable({
   onSelectWorker,
   onExport,
   visibleColumns = {},
-  onToggleColumn
+  onToggleColumn,
+  onRetryWorker,
+  onRetryFailed,
+  isRetryingFailed,
+  failedCount = 0
 }) {
   // Contar columnas activas para el colSpan del estado vacío
   const activeColCount = Object.values(visibleColumns).filter(Boolean).length + 1;
@@ -38,6 +42,9 @@ export function WorkersTable({
         filteredCount={filteredCount}
         visibleColumns={visibleColumns}
         onToggleColumn={onToggleColumn}
+        onRetryFailed={onRetryFailed}
+        isRetryingFailed={isRetryingFailed}
+        failedCount={failedCount}
       />
 
       <div className="mpfn-table-responsive">
@@ -64,6 +71,7 @@ export function WorkersTable({
                   key={w.dni || w.num}
                   worker={w}
                   onSelectWorker={onSelectWorker}
+                  onRetryWorker={onRetryWorker}
                   visibleColumns={visibleColumns}
                 />
               ))

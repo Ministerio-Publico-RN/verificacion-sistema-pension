@@ -1,7 +1,20 @@
-import React from 'react';
-import { CheckCircle2, AlertCircle, Clock, HelpCircle, Eye } from 'lucide-react';
+import React, { useState } from 'react';
+import { CheckCircle2, AlertCircle, Clock, HelpCircle, Eye, RotateCw } from 'lucide-react';
 
-export function WorkerRow({ worker, onSelectWorker, visibleColumns = {} }) {
+export function WorkerRow({ worker, onSelectWorker, onRetryWorker, visibleColumns = {} }) {
+  const [retrying, setRetrying] = useState(false);
+
+  const handleRetry = async (e) => {
+    e.stopPropagation();
+    if (retrying || !onRetryWorker) return;
+    setRetrying(true);
+    try {
+      await onRetryWorker(worker);
+    } finally {
+      setRetrying(false);
+    }
+  };
+
   const renderSemaforo = () => {
     switch (worker.semaforo) {
       case 'coincidente':
@@ -19,9 +32,20 @@ export function WorkerRow({ worker, onSelectWorker, visibleColumns = {} }) {
         );
       case 'latencia':
         return (
-          <span className="mpfn-badge badge-warning">
-            <Clock size={13} /> Error al consultar
-          </span>
+          <div className="semaforo-retry-wrap">
+            <span className="mpfn-badge badge-warning">
+              <Clock size={13} /> Error al consultar
+            </span>
+            <button
+              className="mpfn-btn-icon-retry"
+              title="Reintentar consulta en portal SBS"
+              disabled={retrying}
+              onClick={handleRetry}
+              type="button"
+            >
+              <RotateCw size={12} className={retrying ? 'animate-spin' : ''} />
+            </button>
+          </div>
         );
       case 'sin_afiliacion':
         return (

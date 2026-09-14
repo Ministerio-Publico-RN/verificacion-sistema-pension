@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Download, FileText, Columns3, Check } from 'lucide-react';
+import { Search, Download, FileText, Columns3, Check, RotateCw } from 'lucide-react';
 
 export function TableControls({
   searchQuery,
@@ -10,7 +10,10 @@ export function TableControls({
   totalCount,
   filteredCount,
   visibleColumns,
-  onToggleColumn
+  onToggleColumn,
+  onRetryFailed,
+  isRetryingFailed,
+  failedCount = 0
 }) {
   const [isColsOpen, setIsColsOpen] = useState(false);
   const colsRef = useRef(null);
@@ -78,6 +81,19 @@ export function TableControls({
           <option value="discrepancia">Discrepancias</option>
           <option value="latencia">Error al consultar</option>
         </select>
+
+        {statusFilter === 'latencia' && failedCount > 0 && onRetryFailed && (
+          <button
+            type="button"
+            className="mpfn-btn-warning"
+            onClick={onRetryFailed}
+            disabled={isRetryingFailed}
+            title="Reintentar consultas fallidas en el portal SBS"
+          >
+            <RotateCw size={14} className={isRetryingFailed ? 'animate-spin' : ''} />
+            <span>Reintentar fallidos ({failedCount})</span>
+          </button>
+        )}
 
         {/* Selector de Columnas */}
         <div className="mpfn-col-picker-wrap" ref={colsRef}>

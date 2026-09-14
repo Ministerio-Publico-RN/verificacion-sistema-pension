@@ -8,7 +8,8 @@ import {
   FileSpreadsheet, 
   FileText, 
   ArrowLeft,
-  Filter
+  Filter,
+  RotateCw
 } from 'lucide-react';
 import { WorkersTable } from '../table/WorkersTable';
 
@@ -31,7 +32,10 @@ export function ResultsStep({
   onExport,
   visibleColumns,
   onToggleColumn,
-  onBackToVerification
+  onBackToVerification,
+  onRetryWorker,
+  onRetryFailed,
+  isRetryingFailed
 }) {
   const {
     total,
@@ -111,6 +115,18 @@ export function ResultsStep({
         </div>
 
         <div className="results-header-actions">
+          {statusFilter === 'latencia' && errores > 0 && onRetryFailed && (
+            <button 
+              className="mpfn-btn-warning" 
+              onClick={onRetryFailed}
+              disabled={isRetryingFailed}
+              title="Reintentar todas las consultas fallidas en SBS"
+              type="button"
+            >
+              <RotateCw size={15} className={isRetryingFailed ? 'animate-spin' : ''} />
+              <span>Reintentar fallidos ({errores})</span>
+            </button>
+          )}
           <button 
             className="mpfn-btn-outline" 
             onClick={onBackToVerification}
@@ -218,6 +234,10 @@ export function ResultsStep({
         onExport={onExport}
         visibleColumns={visibleColumns}
         onToggleColumn={onToggleColumn}
+        onRetryWorker={onRetryWorker}
+        onRetryFailed={onRetryFailed}
+        isRetryingFailed={isRetryingFailed}
+        failedCount={errores}
       />
     </div>
   );
