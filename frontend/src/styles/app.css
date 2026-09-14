@@ -482,8 +482,29 @@ body {
 .progress-labels {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   font-size: 0.82rem;
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.45rem;
+}
+
+.progress-meta-right {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.execution-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--mpfn-navy);
+  background: var(--bg-hover, #f1f5f9);
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
 }
 
 .mpfn-progress-bar {

@@ -168,16 +168,13 @@ export function App() {
             <SbsPanel
               status={sbs.status}
               progress={sbs.progress}
-              activeWindows={sbs.activeWindows}
-              headless={sbs.headless}
-              onToggleHeadless={sbs.toggleHeadless}
+              elapsedTime={sbs.formattedTime}
               onStart={() => sbs.startScraping(workers)}
               onPause={sbs.pauseScraping}
               onResume={sbs.resumeScraping}
               onStop={sbs.stopScraping}
               onOpenConfig={() => setIsConfigOpen(true)}
               totalWorkers={workers.length}
-              captchaAlert={sbs.captchaAlert}
               onGoToResults={() => setCurrentStep(4)}
             />
 

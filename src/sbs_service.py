@@ -12,6 +12,7 @@ import tempfile
 import queue
 import threading
 import subprocess
+import json
 
 
 from playwright.sync_api import sync_playwright
@@ -623,6 +624,7 @@ class SBSWorkerThread(threading.Thread):
 class SBSServiceManager:
     _instance = None
     _lock = threading.RLock()
+    CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'sbs_config.json')
 
     def __init__(self):
         self.concurrency = 1
@@ -633,7 +635,39 @@ class SBSServiceManager:
         self.cooldown_until = 0   # Timestamp hasta cuando el sistema debe estar en pausa
         self.task_queue = queue.Queue()
         self.workers = []
+        self._load_persisted_config()
         self._update_worker_pool(self.concurrency)
+
+    def _load_persisted_config(self):
+        if os.path.exists(self.CONFIG_FILE):
+            try:
+                with open(self.CONFIG_FILE, 'r', encoding='utf-8') as f:
+                    cfg = json.load(f)
+                    if 'concurrency' in cfg:
+                        self.concurrency = max(1, min(10, int(cfg['concurrency'])))
+                    if 'headless' in cfg:
+                        self.headless = bool(cfg['headless'])
+                    if 'delay_between' in cfg:
+                        self.delay_between = max(0.0, float(cfg['delay_between']))
+                    if 'block_cooldown' in cfg:
+                        self.block_cooldown = max(1, int(cfg['block_cooldown']))
+                    if 'max_retries' in cfg:
+                        self.max_retries = max(1, min(10, int(cfg['max_retries'])))
+            except Exception as e:
+                print(f"[SBSServiceManager] No se pudo leer {self.CONFIG_FILE}: {e}")
+
+    def _save_persisted_config(self):
+        try:
+            with open(self.CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump({
+                    'concurrency': self.concurrency,
+                    'headless': self.headless,
+                    'delay_between': self.delay_between,
+                    'block_cooldown': self.block_cooldown,
+                    'max_retries': self.max_retries
+                }, f, indent=2)
+        except Exception as e:
+            print(f"[SBSServiceManager] No se pudo guardar {self.CONFIG_FILE}: {e}")
 
     @classmethod
     def get_instance(cls):
@@ -678,6 +712,8 @@ class SBSServiceManager:
                 self.block_cooldown = max(1, int(block_cooldown))
             if max_retries is not None:
                 self.max_retries = max(1, min(10, int(max_retries)))
+
+            self._save_persisted_config()
 
             return {
                 'concurrency': self.concurrency,
