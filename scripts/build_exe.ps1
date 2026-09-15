@@ -9,36 +9,67 @@
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
+$exePath = Join-Path $root "dist/VerificacionPrevisional-MPFN.exe"
 
-Write-Host "== 1/3 Compilando frontend ==" -ForegroundColor Cyan
+# $ErrorActionPreference = "Stop" NO detiene el script si un programa externo
+# (npm, python, pyinstaller) termina con codigo de salida distinto de 0 -- solo
+# afecta errores de PowerShell. Por eso cada paso externo se valida a mano con
+# esta funcion; sin esto, un paso que falla a mitad de camino (ej. sin internet)
+# deja el script avisando "Listo" sin haber generado nada.
+function Invoke-Step {
+    param(
+        [Parameter(Mandatory)][string]$Description,
+        [Parameter(Mandatory)][scriptblock]$Action
+    )
+    Write-Host $Description -ForegroundColor Cyan
+    & $Action
+    if ($LASTEXITCODE -ne 0) {
+        throw "Fallo en: $Description (codigo de salida $LASTEXITCODE). Revisa el log de arriba -- el build se detiene aqui, no continua a los pasos siguientes."
+    }
+}
+
 Push-Location "$root/frontend"
-npm ci
-npm run build
-Pop-Location
+try {
+    Invoke-Step "== 1/3 Compilando frontend (npm ci) ==" { npm ci }
+    Invoke-Step "== 1/3 Compilando frontend (npm run build) ==" { npm run build }
+} finally {
+    Pop-Location
+}
 
 Write-Host "== 2/3 Instalando dependencias de Python para el build ==" -ForegroundColor Cyan
 # --timeout/--retries mas altos: PyPI a veces corta la conexion a mitad de la
-# descarga (ConnectionResetError); reintentar automaticamente suele bastar.
+# descarga (ConnectionResetError); reintentar automaticamente suele bastar. Si
+# falla siempre (no solo alguna vez), es un bloqueo de red/antivirus, no algo
+# que reintentar arregle -- ver el mensaje de error al final del script.
 $pipArgs = @('--default-timeout=120', '--retries', '8')
-python -m pip install --upgrade pip @pipArgs
-python -m pip install @pipArgs -r "$root/requirements.txt"
-python -m pip install @pipArgs pyinstaller
+Invoke-Step "  - Actualizando pip" { python -m pip install --upgrade pip @pipArgs }
+Invoke-Step "  - Instalando requirements.txt (playwright, openpyxl)" { python -m pip install @pipArgs -r "$root/requirements.txt" }
+Invoke-Step "  - Instalando pyinstaller" { python -m pip install @pipArgs pyinstaller }
 
-Write-Host "== 3/3 Empaquetando ejecutable con PyInstaller ==" -ForegroundColor Cyan
 Push-Location $root
-# Se invoca como modulo de Python (no como "pyinstaller" suelto) para que
-# funcione aunque la carpeta Scripts de Python no este en el PATH.
-python -m PyInstaller --noconfirm --clean `
-  --name VerificacionPrevisional-MPFN `
-  --onefile `
-  --console `
-  --add-data "web;web" `
-  --add-data "docs;docs" `
-  --collect-all playwright `
-  --paths src `
-  src/server.py
-Pop-Location
+try {
+    # Se invoca como modulo de Python (no como "pyinstaller" suelto) para que
+    # funcione aunque la carpeta Scripts de Python no este en el PATH.
+    Invoke-Step "== 3/3 Empaquetando ejecutable con PyInstaller ==" {
+        python -m PyInstaller --noconfirm --clean `
+            --name VerificacionPrevisional-MPFN `
+            --onefile `
+            --console `
+            --add-data "web;web" `
+            --add-data "docs;docs" `
+            --collect-all playwright `
+            --paths src `
+            src/server.py
+    }
+} finally {
+    Pop-Location
+}
 
+if (-not (Test-Path $exePath)) {
+    throw "PyInstaller no reporto error pero '$exePath' no existe. Revisa el log de PyInstaller arriba."
+}
+
+$sizeMB = [Math]::Round((Get-Item $exePath).Length / 1MB, 1)
 Write-Host ""
-Write-Host "Listo: dist/VerificacionPrevisional-MPFN.exe" -ForegroundColor Green
+Write-Host "Listo: $exePath ($sizeMB MB)" -ForegroundColor Green
 Write-Host "En el primer arranque descargara Chromium junto al .exe (requiere internet una unica vez)."
