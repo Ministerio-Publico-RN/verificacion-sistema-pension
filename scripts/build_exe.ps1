@@ -17,12 +17,18 @@ npm run build
 Pop-Location
 
 Write-Host "== 2/3 Instalando dependencias de Python para el build ==" -ForegroundColor Cyan
-python -m pip install --upgrade pip
-python -m pip install -r "$root/requirements.txt" pyinstaller
+# --timeout/--retries mas altos: PyPI a veces corta la conexion a mitad de la
+# descarga (ConnectionResetError); reintentar automaticamente suele bastar.
+$pipArgs = @('--default-timeout=120', '--retries', '8')
+python -m pip install --upgrade pip @pipArgs
+python -m pip install @pipArgs -r "$root/requirements.txt"
+python -m pip install @pipArgs pyinstaller
 
 Write-Host "== 3/3 Empaquetando ejecutable con PyInstaller ==" -ForegroundColor Cyan
 Push-Location $root
-pyinstaller --noconfirm --clean `
+# Se invoca como modulo de Python (no como "pyinstaller" suelto) para que
+# funcione aunque la carpeta Scripts de Python no este en el PATH.
+python -m PyInstaller --noconfirm --clean `
   --name VerificacionPrevisional-MPFN `
   --onefile `
   --console `
