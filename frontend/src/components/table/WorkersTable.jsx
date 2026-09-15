@@ -26,7 +26,9 @@ export function WorkersTable({
   onRetryWorker,
   onRetryFailed,
   isRetryingFailed,
-  failedCount = 0
+  failedCount = 0,
+  inProgressDnis,
+  attemptCounts
 }) {
   // Contar columnas activas para el colSpan del estado vacío
   const activeColCount = Object.values(visibleColumns).filter(Boolean).length + 1;
@@ -63,6 +65,7 @@ export function WorkersTable({
               {visibleColumns.afpnet === true && <th className="col-afpnet">Consulta AFPNet</th>}
               {visibleColumns.nacim === true && <th className="col-nacim">Fecha Nacimiento</th>}
               {visibleColumns.cargo === true && <th className="col-cargo">Cargo</th>}
+              {visibleColumns.origen === true && <th className="col-origen">Origen</th>}
               <th className="col-actions">Acción</th>
             </tr>
           </thead>
@@ -75,6 +78,8 @@ export function WorkersTable({
                   onSelectWorker={onSelectWorker}
                   onRetryWorker={onRetryWorker}
                   visibleColumns={visibleColumns}
+                  isInProgress={inProgressDnis?.has(w.dni)}
+                  attemptNumber={attemptCounts?.[w.dni]}
                 />
               ))
             ) : (

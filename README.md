@@ -26,16 +26,32 @@ Aplicación institucional de alta precisión para la contrastación, acreditaci�
 
 ## 🚀 Puesta en Marcha
 
-### Requisitos Previos
-- Python 3.8 o superior instalado.
-- Paquete Playwright (`pip install playwright` y `playwright install chromium`).
+### Opción A: Ejecutable portable (recomendado para usuarios no técnicos)
+1. Ir a la sección [Releases](../../releases) del repositorio.
+2. Descargar `VerificacionPrevisional-MPFN.exe` de la versión más reciente.
+3. Colocarlo en cualquier carpeta (de preferencia una carpeta propia, no una unidad de red compartida) y hacer doble clic.
+4. En el primer arranque descargará Chromium automáticamente (requiere internet solo esa vez); luego funciona sin conexión. Se abrirá el navegador en `http://localhost:8080` automáticamente.
 
-### Ejecución
-Hacer doble clic en el acceso directo:
+El `.exe` crea junto a sí mismo las carpetas `data/` (historial de ejecuciones), `browsers/` (Chromium) y `uploads/` — no requiere instalar Python ni nada adicional.
+
+### Opción B: Desde el código fuente (para desarrollo)
+Requisitos previos:
+- Python 3.8 o superior instalado.
+- Paquete Playwright (`pip install -r requirements.txt` y `playwright install chromium`).
+
+Ejecución — doble clic en:
 ```cmd
 iniciar_sistema.bat
 ```
 El sistema iniciará automáticamente el servidor local en `http://localhost:8080` y abrirá la interfaz en el navegador predeterminado.
+
+### Publicar una nueva versión del ejecutable
+El workflow `.github/workflows/build-release.yml` compila el frontend, empaqueta el `.exe` con PyInstaller y lo publica en GitHub Releases automáticamente al crear un tag `vX.Y.Z`:
+```cmd
+git tag v1.0.0
+git push origin v1.0.0
+```
+También puede lanzarse manualmente desde la pestaña "Actions" del repositorio (`workflow_dispatch`), sin crear un tag, para generar solo el artefacto de build. Para compilar el `.exe` localmente sin pasar por GitHub: `powershell -ExecutionPolicy Bypass -File scripts/build_exe.ps1`.
 
 ---
 

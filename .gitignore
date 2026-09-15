@@ -18,4 +18,15 @@ node_modules/
 .vite/
 recuperar_chat.bat
 
+# Base de datos local de historial/ejecuciones
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# Empaquetado del ejecutable (PyInstaller) y navegador descargado en el primer arranque
+dist/
+build/
+*.spec
+/browsers/
+
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { CheckCircle2, AlertCircle, Clock, HelpCircle, ShieldCheck, UserPlus, Eye, RotateCw } from 'lucide-react';
 
-export function WorkerRow({ worker, onSelectWorker, onRetryWorker, visibleColumns = {} }) {
+export function WorkerRow({ worker, onSelectWorker, onRetryWorker, visibleColumns = {}, isInProgress = false, attemptNumber }) {
   const [retrying, setRetrying] = useState(false);
 
   const handleRetry = async (e) => {
@@ -16,6 +16,14 @@ export function WorkerRow({ worker, onSelectWorker, onRetryWorker, visibleColumn
   };
 
   const renderSemaforo = () => {
+    if (isInProgress) {
+      return (
+        <span className="mpfn-badge badge-reviewing">
+          <span className="mpfn-blink-dot" /> Revisando{attemptNumber ? ` #${attemptNumber}` : ''}
+        </span>
+      );
+    }
+
     switch (worker.semaforo) {
       case 'coincidente':
         return (
@@ -25,16 +33,16 @@ export function WorkerRow({ worker, onSelectWorker, onRetryWorker, visibleColumn
         );
       case 'discrepancia':
         return (
-          <div className="mpfn-badge-multiline badge-danger">
-            <div className="badge-title"><AlertCircle size={13} /> Discrepancia</div>
+          <div className="mpfn-badge-multiline badge-warning">
+            <div className="badge-title"><AlertCircle size={13} /> Observado</div>
             <div className="badge-sub">{worker.semaforo_texto}</div>
           </div>
         );
       case 'latencia':
         return (
           <div className="semaforo-retry-wrap">
-            <span className="mpfn-badge badge-warning">
-              <Clock size={13} /> Error al consultar
+            <span className="mpfn-badge badge-danger">
+              <Clock size={13} /> Falló al Consultar
             </span>
             <button
               className="mpfn-btn-icon-retry"
@@ -137,6 +145,10 @@ export function WorkerRow({ worker, onSelectWorker, onRetryWorker, visibleColumn
 
       {visibleColumns.cargo === true && (
         <td className="col-cargo text-muted">{worker.cargo || '-'}</td>
+      )}
+
+      {visibleColumns.origen === true && (
+        <td className="col-origen text-muted">{worker.origen_planilla || '-'}</td>
       )}
 
       <td className="col-actions">

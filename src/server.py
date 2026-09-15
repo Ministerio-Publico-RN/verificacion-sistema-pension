@@ -11,16 +11,24 @@ import urllib.parse
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from socketserver import ThreadingMixIn
 
-# Asegurar path de imports
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SRC_DIR = os.path.join(BASE_DIR, 'src')
-WEB_DIR = os.path.join(BASE_DIR, 'web')
-DOCS_DIR = os.path.join(BASE_DIR, 'docs')
+# Asegurar path de imports (necesario en dev; inocuo en el .exe empaquetado, donde
+# PyInstaller ya deja estos módulos importables directamente)
+SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
 
-sys.path.insert(0, SRC_DIR)
+from paths import resource_path, data_path, is_frozen
+import browser_bootstrap  # debe ejecutarse antes de importar sbs_service (configura Playwright)
+
+WEB_DIR = resource_path('web')
+DOCS_DIR = resource_path('docs')
+
 from siga_parser import SigaParser
 from sbs_service import get_sbs_service
 from afpnet_service import AfpnetParser, AfpnetGenerator, get_afpnet_service
+import db
+
+db.init_db()
 
 # Estado global en memoria para trabajadores activos
 ACTIVE_STATE = {
@@ -48,7 +56,13 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
-        if path == '/api/status':
+        exec_match = re.match(r'^/api/executions/(\d+)$', path)
+
+        if path == '/api/executions':
+            self.handle_executions_list()
+        elif exec_match:
+            self.handle_execution_get(int(exec_match.group(1)))
+        elif path == '/api/status':
             desktop_name = "unknown"
             try:
                 import ctypes
@@ -64,6 +78,9 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
         elif path == '/api/sbs/config':
             sbs = get_sbs_service()
             self.send_json(sbs.get_config())
+        elif path == '/api/sbs/attempts':
+            sbs = get_sbs_service()
+            self.send_json({'attempts': sbs.get_attempts()})
         elif path == '/api/load-sample':
             self.handle_load_sample()
         elif path == '/api/afpnet/download-template':
@@ -98,8 +115,69 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             self.handle_afpnet_stop()
         elif path == '/api/export-preview':
             self.handle_export_preview()
+        elif path == '/api/executions':
+            self.handle_execution_create()
+        elif re.match(r'^/api/executions/(\d+)/status$', path):
+            self.handle_execution_status(int(re.match(r'^/api/executions/(\d+)/status$', path).group(1)))
         else:
             self.send_error(404, "Endpoint no encontrado")
+
+    def do_DELETE(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        exec_match = re.match(r'^/api/executions/(\d+)$', path)
+        if exec_match:
+            self.handle_execution_delete(int(exec_match.group(1)))
+        else:
+            self.send_error(404, "Endpoint no encontrado")
+
+    def handle_executions_list(self):
+        try:
+            self.send_json({'success': True, 'executions': db.list_executions()})
+        except Exception as e:
+            self.send_json({'error': str(e)}, status=500)
+
+    def handle_execution_get(self, execution_id):
+        try:
+            execution = db.get_execution(execution_id)
+            if not execution:
+                self.send_json({'error': 'Ejecución no encontrada'}, status=404)
+                return
+            self.send_json({'success': True, **execution})
+        except Exception as e:
+            self.send_json({'error': str(e)}, status=500)
+
+    def handle_execution_create(self):
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length).decode('utf-8')
+            params = json.loads(body)
+            tipo = params.get('tipo', 'altas')
+            archivos = params.get('archivos', [])
+            workers = params.get('workers', [])
+            execution_id = db.create_execution(tipo, archivos, workers)
+            ACTIVE_STATE['workers'] = workers
+            self.send_json({'success': True, 'execution_id': execution_id})
+        except Exception as e:
+            self.send_json({'error': str(e)}, status=500)
+
+    def handle_execution_status(self, execution_id):
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length).decode('utf-8')
+            params = json.loads(body)
+            estado = params.get('estado', 'en_curso')
+            db.update_status(execution_id, estado)
+            self.send_json({'success': True})
+        except Exception as e:
+            self.send_json({'error': str(e)}, status=500)
+
+    def handle_execution_delete(self, execution_id):
+        try:
+            db.delete_execution(execution_id)
+            self.send_json({'success': True})
+        except Exception as e:
+            self.send_json({'error': str(e)}, status=500)
 
     def handle_sbs_set_config(self):
         """Actualiza la velocidad, modo de visibilidad y tiempos de espera del servicio SBS"""
@@ -136,9 +214,20 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             ape_mat = params.get('ape_materno', '')
             primer_nom = params.get('primer_nombre', '')
             segundo_nom = params.get('segundo_nombre', '')
+            execution_id = params.get('execution_id')
 
             sbs = get_sbs_service()
             result = sbs.query_worker(dni, ape_pat, ape_mat, primer_nom, segundo_nom)
+
+            if execution_id and dni:
+                try:
+                    # Una consulta CANCELADA (detenida a mitad de camino) no cuenta como
+                    # consultada: debe quedar pendiente para la próxima "Continuar ejecución".
+                    fue_cancelada = result.get('estado_sbs') == 'CANCELADO'
+                    db.merge_worker(execution_id, dni, {'sbs_resultado': result, 'sbs_consultado': not fue_cancelada})
+                except Exception:
+                    pass
+
             self.send_json(result)
         except Exception as e:
             self.send_json({'error': f"Error en consulta SBS: {str(e)}"}, status=500)
@@ -159,7 +248,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             candidates = [
                 os.path.join(DOCS_DIR, 'archivos_pruebas', 'altas cas set 2026.DBF'),
                 os.path.join(DOCS_DIR, 'altas cas set 2026.DBF'),
-                os.path.join(BASE_DIR, 'altas cas set 2026.DBF')
+                resource_path('altas cas set 2026.DBF')
             ]
             target = None
             for c in candidates:
@@ -196,41 +285,44 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 boundary = content_type.split("boundary=")[1].encode()
                 body = self.rfile.read(content_length)
                 
-                # Extraer archivo del boundary
+                # Extraer archivo y campo opcional "origen" del boundary
                 parts = body.split(b'--' + boundary)
                 file_data = None
                 filename = "archivo_cargado.dbf"
-                
+                origen = None
+
                 for part in parts:
-                    if b'filename="' in part:
-                        headers_part, content_part = part.split(b'\r\n\r\n', 1)
-                        # Limpiar trailing CRLF
-                        if content_part.endswith(b'\r\n'):
-                            content_part = content_part[:-2]
+                    if b'\r\n\r\n' not in part:
+                        continue
+                    headers_part, content_part = part.split(b'\r\n\r\n', 1)
+                    if content_part.endswith(b'\r\n'):
+                        content_part = content_part[:-2]
+
+                    if b'filename="' in headers_part:
                         file_data = content_part
-                        
-                        # Extraer nombre
                         m = re.search(r'filename="([^"]+)"', headers_part.decode('latin1', errors='ignore'))
                         if m:
                             filename = m.group(1)
-                        break
-                
+                    elif b'name="origen"' in headers_part:
+                        origen = content_part.decode('utf-8', errors='ignore').strip() or None
+
                 if not file_data:
                     self.send_json({'error': 'No se recibió ningún archivo en el formulario'}, status=400)
                     return
 
                 # Guardar temporalmente en carpeta uploads
-                uploads_dir = os.path.join(BASE_DIR, 'uploads')
+                uploads_dir = data_path('uploads')
                 os.makedirs(uploads_dir, exist_ok=True)
                 save_path = os.path.join(uploads_dir, filename)
                 with open(save_path, 'wb') as f:
                     f.write(file_data)
 
-                records = SigaParser.parse_file(save_path)
+                records = SigaParser.parse_file(save_path, origen=origen)
                 ACTIVE_STATE['workers'] = records
                 self.send_json({
                     'success': True,
                     'filename': filename,
+                    'origen': origen,
                     'total': len(records),
                     'data': records,
                     'workers': records
@@ -251,7 +343,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 candidates = [
                     os.path.join(DOCS_DIR, 'archivos_pruebas', 'altas cas set 2026.DBF'),
                     os.path.join(DOCS_DIR, 'altas cas set 2026.DBF'),
-                    os.path.join(BASE_DIR, 'altas cas set 2026.DBF')
+                    resource_path('altas cas set 2026.DBF')
                 ]
                 for c in candidates:
                     if os.path.exists(c):
@@ -314,7 +406,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                     self.send_json({'error': 'No se recibió ningún archivo Excel.'}, status=400)
                     return
 
-                uploads_dir = os.path.join(BASE_DIR, 'uploads')
+                uploads_dir = data_path('uploads')
                 os.makedirs(uploads_dir, exist_ok=True)
                 save_path = os.path.join(uploads_dir, filename)
                 with open(save_path, 'wb') as f:
@@ -338,7 +430,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             candidates = [
                 os.path.join(DOCS_DIR, 'archivos_pruebas', 'res_prueba_1_consultaCUSPPMasiva.xlsx'),
                 os.path.join(DOCS_DIR, 'res_prueba_1_consultaCUSPPMasiva.xlsx'),
-                os.path.join(BASE_DIR, 'res_prueba_1_consultaCUSPPMasiva.xlsx')
+                resource_path('res_prueba_1_consultaCUSPPMasiva.xlsx')
             ]
             target = None
             for c in candidates:
@@ -411,7 +503,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-def run_server(port=8080):
+def run_server(port=8080, open_browser=False):
     os.makedirs(WEB_DIR, exist_ok=True)
     server_address = ('127.0.0.1', port)
     httpd = ThreadedHTTPServer(server_address, AppRequestHandler)
@@ -420,6 +512,12 @@ def run_server(port=8080):
     print(f"  Servidor local activo en: http://localhost:{port}")
     print(f"  Presione Ctrl+C para detener el servidor")
     print(f"===========================================================")
+
+    if open_browser:
+        import threading
+        import webbrowser
+        threading.Timer(0.6, lambda: webbrowser.open(f'http://localhost:{port}')).start()
+
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
@@ -430,4 +528,7 @@ if __name__ == '__main__':
     port = 8080
     if len(sys.argv) > 1 and sys.argv[1].isdigit():
         port = int(sys.argv[1])
-    run_server(port)
+    # El .exe empaquetado no tiene un .bat que abra el navegador por fuera,
+    # así que lo hace él mismo. En modo desarrollo se mantiene el flujo actual
+    # (el .bat es quien abre el navegador).
+    run_server(port, open_browser=is_frozen())

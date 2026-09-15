@@ -1,13 +1,16 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { verifyWorkerSBS, stopSBS, getSbsConfig, saveSbsConfig } from '../api/sbsApi';
+import { verifyWorkerSBS, stopSBS, getSbsConfig, saveSbsConfig, getSbsAttempts } from '../api/sbsApi';
+import { updateExecutionStatus } from '../api/sigaApi';
 
 export function useSbsStream({ onWorkerUpdate, onLog }) {
-  const [status, setStatus] = useState('idle'); // idle | running | paused | completed
+  const [status, setStatus] = useState('idle'); // idle | running | paused | stopped | completed
   const [progress, setProgress] = useState({ current: 0, total: 0, percent: 0 });
-  const [activeWindows, setActiveWindows] = useState(1);
+  const [activeWindows, setActiveWindows] = useState(3);
   const [headless, setHeadless] = useState(false);
   const [captchaAlert, setCaptchaAlert] = useState(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [inProgressDnis, setInProgressDnis] = useState(() => new Set());
+  const [attemptCounts, setAttemptCounts] = useState({});
 
   const isPausedRef = useRef(false);
   const isCancelledRef = useRef(false);
@@ -25,6 +28,27 @@ export function useSbsStream({ onWorkerUpdate, onLog }) {
     };
   }, [status]);
 
+  // Sondeo del número de intento en curso por DNI (para el tag "Revisando #N")
+  useEffect(() => {
+    if (status !== 'running' && status !== 'paused') {
+      setAttemptCounts({});
+      return;
+    }
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await getSbsAttempts();
+        if (!cancelled) setAttemptCounts(res?.attempts || {});
+      } catch (_) {}
+    };
+    poll();
+    const interval = setInterval(poll, 1500);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [status]);
+
   const formattedTime = useMemo(() => {
     const hrs = Math.floor(elapsedSeconds / 3600);
     const mins = Math.floor((elapsedSeconds % 3600) / 60);
@@ -34,6 +58,15 @@ export function useSbsStream({ onWorkerUpdate, onLog }) {
     }
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   }, [elapsedSeconds]);
+
+  // Restaura el progreso/estado del panel al abrir una ejecución guardada desde el historial,
+  // en vez de arrancar siempre desde 0 como si fuera una ejecución nueva.
+  const hydrateProgress = useCallback(({ current, total, completed, elapsedSeconds: elapsed }) => {
+    const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+    setProgress({ current, total, percent });
+    setElapsedSeconds(Math.max(0, Math.round(elapsed || 0)));
+    setStatus(completed ? 'completed' : 'stopped');
+  }, []);
 
   const reloadConfig = useCallback(async () => {
     try {
@@ -82,7 +115,25 @@ export function useSbsStream({ onWorkerUpdate, onLog }) {
     }
   };
 
-  const startScraping = useCallback(async (workersToQuery) => {
+  // Acepta un número fijo ("2.5") o un rango ("10-20") para la espera entre consultas
+  const parseDelayRangeMs = (raw) => {
+    if (raw === undefined || raw === null || raw === '') return { minMs: 2000, maxMs: 2000 };
+    const str = String(raw).trim();
+    const rangeMatch = str.match(/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$/);
+    if (rangeMatch) {
+      const a = Math.max(0, parseFloat(rangeMatch[1]) * 1000);
+      const b = Math.max(0, parseFloat(rangeMatch[2]) * 1000);
+      return { minMs: Math.min(a, b), maxMs: Math.max(a, b) };
+    }
+    const num = parseFloat(str);
+    if (Number.isNaN(num)) return { minMs: 2000, maxMs: 2000 };
+    const ms = Math.max(0, num * 1000);
+    return { minMs: ms, maxMs: ms };
+  };
+
+  const startScraping = useCallback(async (workersToQuery, executionId = null, opts = {}) => {
+    const { resetTimer = true, baseProgress = null } = opts;
+
     if (!workersToQuery || workersToQuery.length === 0) {
       alert('No hay trabajadores para consultar.');
       return;
@@ -90,20 +141,27 @@ export function useSbsStream({ onWorkerUpdate, onLog }) {
 
     isCancelledRef.current = false;
     isPausedRef.current = false;
-    setElapsedSeconds(0);
+    if (resetTimer) setElapsedSeconds(0);
     setStatus('running');
     setCaptchaAlert(null);
 
-    const total = workersToQuery.length;
-    setProgress({ current: 0, total, percent: 0 });
+    // El total/actual reflejan la ejecución completa cuando se retoma desde un punto previo,
+    // no solo el lote de trabajadores pendientes que se va a consultar ahora.
+    const total = baseProgress ? baseProgress.total : workersToQuery.length;
+    const startingCompleted = baseProgress ? baseProgress.current : 0;
+    setProgress({
+      current: startingCompleted,
+      total,
+      percent: total > 0 ? Math.round((startingCompleted / total) * 100) : 0
+    });
 
     // Cargar config actual de SBS
-    let delayMs = 1000;
-    let workerConcurrency = 1;
+    let delayRange = { minMs: 2000, maxMs: 2000 };
+    let workerConcurrency = 3;
     try {
       const cfg = await getSbsConfig();
       if (cfg?.delay_between !== undefined) {
-        delayMs = Math.round(Number(cfg.delay_between) * 1000);
+        delayRange = parseDelayRangeMs(cfg.delay_between);
       }
       if (cfg?.concurrency) {
         workerConcurrency = Math.max(1, Math.min(10, Number(cfg.concurrency)));
@@ -111,28 +169,30 @@ export function useSbsStream({ onWorkerUpdate, onLog }) {
       }
     } catch (_) {}
 
-    appendLog(`Iniciando motor SBS con ${workerConcurrency} ${workerConcurrency === 1 ? 'ventana' : 'ventanas simultáneas'} para ${total} trabajadores...`, 'info');
+    const batchTotal = workersToQuery.length;
+    appendLog(`Iniciando motor SBS con ${workerConcurrency} ${workerConcurrency === 1 ? 'ventana' : 'ventanas simultáneas'} para ${batchTotal} trabajadores...`, 'info');
 
     let nextIndex = 0;
-    let completed = 0;
+    let completed = startingCompleted;
 
     const runSlot = async (slotId) => {
-      while (nextIndex < total && !isCancelledRef.current) {
+      while (nextIndex < batchTotal && !isCancelledRef.current) {
         await waitIfPaused();
         if (isCancelledRef.current) break;
 
         const idx = nextIndex++;
-        if (idx >= total) break;
+        if (idx >= batchTotal) break;
 
         const worker = workersToQuery[idx];
         const dni = worker.dni;
         const nombre = worker.apellidos_nombres || worker.nombre_completo || dni;
         const tag = workerConcurrency > 1 ? `[V-${slotId + 1}]` : '';
 
-        appendLog(`[${idx + 1}/${total}]${tag} Consultando SBS: ${nombre} (${dni})...`, 'info');
+        appendLog(`[${idx + 1}/${batchTotal}]${tag} Consultando SBS: ${nombre} (${dni})...`, 'info');
+        setInProgressDnis(prev => new Set(prev).add(dni));
 
         try {
-          const sbsRes = await verifyWorkerSBS(worker);
+          const sbsRes = await verifyWorkerSBS(worker, executionId);
 
           completed++;
           const pct = Math.round((completed / total) * 100);
@@ -140,7 +200,7 @@ export function useSbsStream({ onWorkerUpdate, onLog }) {
 
           onWorkerUpdate?.(dni, {
             sbs_resultado: sbsRes,
-            sbs_consultado: true
+            sbs_consultado: sbsRes?.estado_sbs !== 'CANCELADO'
           });
 
           const afpText = sbsRes?.afp || (sbsRes?.afiliado_spp ? 'ENCONTRADO' : 'NO REGISTRADO');
@@ -149,15 +209,25 @@ export function useSbsStream({ onWorkerUpdate, onLog }) {
           completed++;
           setProgress({ current: completed, total, percent: Math.round((completed / total) * 100) });
           appendLog(`[ERROR]${tag} DNI ${dni}: ${err.message}`, 'error');
+        } finally {
+          setInProgressDnis(prev => {
+            if (!prev.has(dni)) return prev;
+            const next = new Set(prev);
+            next.delete(dni);
+            return next;
+          });
         }
 
-        if (!isCancelledRef.current && delayMs > 0 && nextIndex < total) {
-          await new Promise(r => setTimeout(r, delayMs));
+        if (!isCancelledRef.current && nextIndex < batchTotal) {
+          const waitMs = delayRange.maxMs > delayRange.minMs
+            ? delayRange.minMs + Math.random() * (delayRange.maxMs - delayRange.minMs)
+            : delayRange.minMs;
+          if (waitMs > 0) await new Promise(r => setTimeout(r, waitMs));
         }
       }
     };
 
-    const slotCount = Math.min(workerConcurrency, total);
+    const slotCount = Math.min(workerConcurrency, batchTotal);
     const slots = [];
     for (let s = 0; s < slotCount; s++) {
       slots.push(runSlot(s));
@@ -165,11 +235,14 @@ export function useSbsStream({ onWorkerUpdate, onLog }) {
     await Promise.all(slots);
 
     if (isCancelledRef.current) {
-      setStatus('idle');
+      setStatus('stopped');
       appendLog('Verificación SBS detenida por el usuario.', 'warning');
     } else {
       setStatus('completed');
       appendLog('¡Verificación SBS completada para todos los trabajadores!', 'success');
+      if (executionId) {
+        try { await updateExecutionStatus(executionId, 'completado'); } catch (_) {}
+      }
     }
   }, [appendLog, onWorkerUpdate]);
 
@@ -188,11 +261,13 @@ export function useSbsStream({ onWorkerUpdate, onLog }) {
   const stopScraping = useCallback(async () => {
     isCancelledRef.current = true;
     isPausedRef.current = false;
-    setStatus('idle');
+    setStatus('stopped');
+    setInProgressDnis(new Set());
+    appendLog('Deteniendo sesión del navegador SBS...', 'warning');
     try {
       await stopSBS();
+      appendLog('Todas las ventanas del navegador fueron cerradas.', 'warning');
     } catch (_) {}
-    appendLog('Deteniendo sesión del navegador SBS...', 'warning');
   }, [appendLog]);
 
   useEffect(() => {
@@ -208,8 +283,11 @@ export function useSbsStream({ onWorkerUpdate, onLog }) {
     headless,
     toggleHeadless,
     reloadConfig,
+    hydrateProgress,
     elapsedSeconds,
     formattedTime,
+    inProgressDnis,
+    attemptCounts,
     captchaAlert,
     dismissCaptcha: () => setCaptchaAlert(null),
     startScraping,

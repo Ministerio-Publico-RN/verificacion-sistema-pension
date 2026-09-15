@@ -1,7 +1,7 @@
 {
-  "concurrency": 10,
+  "concurrency": 5,
   "headless": false,
-  "delay_between": 2.0,
+  "delay_between": "5.0-8.0",
   "block_cooldown": 5,
-  "max_retries": 10
+  "max_retries": 25
 }

@@ -12,6 +12,11 @@ import zipfile
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
+try:
+    from paths import data_path
+except ImportError:
+    from src.paths import data_path
+
 AFPNET_LOGIN_URL = "https://www.afpnet.com.pe/"
 AFPNET_MASIVA_URL = "https://www.afpnet.com.pe/GestionarAfiliado/Afiliado/ConsultaCusppMasiva"
 
@@ -169,7 +174,7 @@ class AfpnetGenerator:
         Retorna lista de tuplas: (nombre_archivo, ruta_archivo, num_registros)
         """
         if output_dir is None:
-            output_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'uploads')
+            output_dir = data_path('uploads')
         os.makedirs(output_dir, exist_ok=True)
 
         batches = []

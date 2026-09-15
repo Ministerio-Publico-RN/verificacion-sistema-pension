@@ -57,7 +57,6 @@ export function ResultsStep({
       id: 'all',
       title: 'Total Registros',
       value: total,
-      subtext: `${consultados} consultados en SBS`,
       icon: Users,
       badge: '100% Padrón',
       className: 'result-card-total'
@@ -66,25 +65,22 @@ export function ResultsStep({
       id: 'coincidente',
       title: 'Validados (Iguales)',
       value: iguales,
-      subtext: 'SIGA y SBS coinciden',
       icon: CheckCircle2,
       badge: `${pctIguales}% Coincidencia`,
       className: 'result-card-valid'
     },
     {
       id: 'discrepancia',
-      title: 'Discrepancias',
+      title: 'Observados',
       value: discrepancias,
-      subtext: 'Régimen o AFP no coincide',
       icon: AlertTriangle,
       badge: discrepancias > 0 ? 'Requiere Revisión' : 'Sin desalineación',
       className: 'result-card-alert'
     },
     {
       id: 'latencia',
-      title: 'Con Errores / Observados',
+      title: 'Fallaron al Consultar',
       value: errores,
-      subtext: 'Retos Captcha o latencia SBS',
       icon: AlertOctagon,
       badge: errores > 0 ? 'Reintentar' : 'Sin errores',
       className: 'result-card-error'
@@ -93,7 +89,6 @@ export function ResultsStep({
       id: 'snp',
       title: 'Inscritos en SNP (ONP)',
       value: snpConfirmados,
-      subtext: 'Régimen SNP y validado no en SBS',
       icon: ShieldCheck,
       badge: 'ONP / D.L. 19990',
       className: 'result-card-snp'
@@ -102,7 +97,6 @@ export function ResultsStep({
       id: 'sin_afiliacion',
       title: 'Nuevos sin Afiliación',
       value: sinAfiliacion,
-      subtext: 'Padrón en blanco y no en SBS',
       icon: UserPlus,
       badge: 'Sin AFP / SNP',
       className: 'result-card-neutral'
@@ -192,21 +186,16 @@ export function ResultsStep({
               onClick={() => onStatusChange(card.id)}
               role="button"
               tabIndex={0}
+              title={card.badge}
             >
               <div className="result-card-top">
-                <span className="result-card-title">{card.title}</span>
-                <span className="result-card-badge">{card.badge}</span>
-              </div>
-              <div className="result-card-main">
-                <div className="result-card-value">{card.value}</div>
                 <div className="result-card-icon-wrap">
-                  <Icon size={22} />
+                  <Icon size={16} />
                 </div>
+                {isSelected && <span className="result-filter-indicator"><Filter size={10} /></span>}
               </div>
-              <div className="result-card-footer">
-                <span className="result-card-subtext">{card.subtext}</span>
-                {isSelected && <span className="result-filter-indicator"><Filter size={11} /> Filtrado</span>}
-              </div>
+              <div className="result-card-value">{card.value}</div>
+              <span className="result-card-title">{card.title}</span>
             </div>
           );
         })}
@@ -218,16 +207,16 @@ export function ResultsStep({
           <span className="distribution-title">Distribución Visual de Validación</span>
           <div className="distribution-legend">
             <span className="legend-item"><span className="dot dot-success" /> Coincidentes ({iguales})</span>
-            <span className="legend-item"><span className="dot dot-warning" /> Discrepancias ({discrepancias})</span>
-            <span className="legend-item"><span className="dot dot-danger" /> Errores ({errores})</span>
+            <span className="legend-item"><span className="dot dot-warning" /> Observados ({discrepancias})</span>
+            <span className="legend-item"><span className="dot dot-danger" /> Fallaron al Consultar ({errores})</span>
             <span className="legend-item"><span className="dot dot-snp" /> Inscritos SNP ({snpConfirmados})</span>
             <span className="legend-item"><span className="dot dot-info" /> Sin Afiliación ({sinAfiliacion})</span>
           </div>
         </div>
         <div className="mpfn-segmented-bar">
           <div className="segment segment-success" style={{ width: `${pctValid}%` }} title={`Coincidentes: ${pctValid.toFixed(1)}%`} />
-          <div className="segment segment-warning" style={{ width: `${pctDiscrep}%` }} title={`Discrepancias: ${pctDiscrep.toFixed(1)}%`} />
-          <div className="segment segment-danger" style={{ width: `${pctErr}%` }} title={`Errores: ${pctErr.toFixed(1)}%`} />
+          <div className="segment segment-warning" style={{ width: `${pctDiscrep}%` }} title={`Observados: ${pctDiscrep.toFixed(1)}%`} />
+          <div className="segment segment-danger" style={{ width: `${pctErr}%` }} title={`Fallaron al Consultar: ${pctErr.toFixed(1)}%`} />
           <div className="segment segment-snp" style={{ width: `${pctSnp}%` }} title={`Inscritos SNP: ${pctSnp.toFixed(1)}%`} />
           <div className="segment segment-info" style={{ width: `${pctSinAfil}%` }} title={`Sin Afiliación: ${pctSinAfil.toFixed(1)}%`} />
         </div>

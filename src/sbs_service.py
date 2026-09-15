@@ -18,10 +18,35 @@ import json
 from playwright.sync_api import sync_playwright
 try:
     from siga_parser import clean_mojibake
+    from paths import data_path
 except ImportError:
     from src.siga_parser import clean_mojibake
+    from src.paths import data_path
 
 SBS_URL = "https://servicios.sbs.gob.pe/ReporteSituacionPrevisional/Afil_Consulta.aspx"
+
+# Marca inyectada en la línea de comandos de cada Chromium lanzado por este servicio,
+# para poder ubicarlos y forzar su cierre inmediato al detener (ver stop()/kill_marked_chromium),
+# sin depender de atributos internos y frágiles de la API de Playwright.
+MPFN_KILL_MARKER = "mpfn-sbs-verificacion-marker"
+
+
+def kill_marked_chromium():
+    """Cierra de inmediato, a nivel de sistema operativo, todos los procesos chrome.exe
+    lanzados por este servicio (identificados por MPFN_KILL_MARKER), sin esperar a que
+    Playwright detecte la desconexión por sus propios tiempos de espera internos."""
+    try:
+        ps_cmd = (
+            "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" -ErrorAction SilentlyContinue | "
+            f"Where-Object {{ $_.CommandLine -like '*{MPFN_KILL_MARKER}*' }} | "
+            "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+        )
+        subprocess.run(
+            ['powershell', '-NoProfile', '-NonInteractive', '-Command', ps_cmd],
+            timeout=6, capture_output=True
+        )
+    except Exception as e:
+        print(f"[SBSServiceManager] Error al forzar cierre de ventanas Chromium: {e}")
 
 # Posición en mosaico dinámica según worker_id
 def get_window_position(worker_id):
@@ -70,7 +95,8 @@ class SBSWorkerThread(threading.Thread):
                 f"--window-size={pos['width']},{pos['height']}",
                 "--disable-blink-features=AutomationControlled",
                 "--disable-infobars",
-                "--lang=es-ES,es"
+                "--lang=es-ES,es",
+                f"--{MPFN_KILL_MARKER}"
             ]
 
             if not self.browser or not self.browser.is_connected():
@@ -300,6 +326,11 @@ class SBSWorkerThread(threading.Thread):
         primer_nom = clean_mojibake(params.get('primer_nombre', ''))
         segundo_nom = clean_mojibake(params.get('segundo_nombre', ''))
 
+        max_retries = getattr(self.manager, 'max_retries', 25) if self.manager else 25
+
+        if self.manager:
+            self.manager.set_attempt(dni, retry_count + 1)
+
         t0 = time.time()
 
         if self.interrupted or not self.running:
@@ -334,11 +365,14 @@ class SBSWorkerThread(threading.Thread):
         self.ensure_browser()
 
         if self.is_imperva_blocked():
-            if retry_count < 2:
+            if retry_count < max_retries:
                 self.handle_security_block(dni)
                 return self._execute_query(params, retry_count=retry_count + 1)
 
         if not self.is_browser_alive():
+            if retry_count < max_retries:
+                self.handle_security_block(dni)
+                return self._execute_query(params, retry_count=retry_count + 1)
             return {
                 'afiliado_spp': None,
                 'afp': 'VENTANA CERRADA',
@@ -346,7 +380,7 @@ class SBSWorkerThread(threading.Thread):
                 'fecha_afiliacion': '-',
                 'situacion': 'VENTANA CERRADA',
                 'estado_sbs': 'ERROR',
-                'mensaje': 'No se pudo abrir la ventana del navegador. Pulse "Reintentar".',
+                'mensaje': 'No se pudo abrir la ventana del navegador tras varios reintentos.',
                 'tiempo_seg': round(time.time() - t0, 2),
                 'worker_id': self.worker_id
             }
@@ -362,7 +396,7 @@ class SBSWorkerThread(threading.Thread):
             # 1. Si la ventana está en la pantalla del Reporte de Afiliación (con botón "Consultar otro registro"):
             btn_otro = self.page.query_selector("#ctl00_ContentPlaceHolder1_btnOtro_Registro")
             if btn_otro and btn_otro.is_visible():
-                btn_otro.click()
+                btn_otro.click(timeout=6000)
                 try:
                     self.page.wait_for_selector("#ctl00_ContentPlaceHolder1_txtNumeroDoc", state="visible", timeout=10000)
                     self.page.wait_for_timeout(200)
@@ -377,7 +411,7 @@ class SBSWorkerThread(threading.Thread):
                 except Exception:
                     pass
 
-            if self.is_imperva_blocked() and retry_count < 2:
+            if self.is_imperva_blocked() and retry_count < max_retries:
                 self.handle_security_block(dni)
                 return self._execute_query(params, retry_count=retry_count + 1)
 
@@ -391,18 +425,18 @@ class SBSWorkerThread(threading.Thread):
                 pass
 
             # 4. Llenar formulario con datos del trabajador actual
-            self.page.select_option("#ctl00_ContentPlaceHolder1_cboTipoDoc", "00") # DNI
-            self.page.fill("#ctl00_ContentPlaceHolder1_txtNumeroDoc", dni)
-            self.page.fill("#ctl00_ContentPlaceHolder1_txtAp_pat", ape_pat)
-            self.page.fill("#ctl00_ContentPlaceHolder1_txtAp_mat", ape_mat)
-            self.page.fill("#ctl00_ContentPlaceHolder1_txtPri_nom", primer_nom)
-            self.page.fill("#ctl00_ContentPlaceHolder1_txtSeg_nom", segundo_nom or "")
+            self.page.select_option("#ctl00_ContentPlaceHolder1_cboTipoDoc", "00", timeout=6000) # DNI
+            self.page.fill("#ctl00_ContentPlaceHolder1_txtNumeroDoc", dni, timeout=6000)
+            self.page.fill("#ctl00_ContentPlaceHolder1_txtAp_pat", ape_pat, timeout=6000)
+            self.page.fill("#ctl00_ContentPlaceHolder1_txtAp_mat", ape_mat, timeout=6000)
+            self.page.fill("#ctl00_ContentPlaceHolder1_txtPri_nom", primer_nom, timeout=6000)
+            self.page.fill("#ctl00_ContentPlaceHolder1_txtSeg_nom", segundo_nom or "", timeout=6000)
 
             # 5. Marcar el DOM con el DNI actual para saber cuándo el postback de SBS ha respondido de verdad
             self.page.evaluate(f"() => document.body.setAttribute('data-sbs-cur-dni', '{dni}')")
 
             # 6. Enviar búsqueda
-            self.page.click("#ctl00_ContentPlaceHolder1_btnBuscar")
+            self.page.click("#ctl00_ContentPlaceHolder1_btnBuscar", timeout=6000)
             
             # 7. Esperar activamente en micro-intervalos a que el servidor de la SBS entregue la respuesta
             t_wait_start = time.time()
@@ -455,7 +489,7 @@ class SBSWorkerThread(threading.Thread):
             elapsed = round(time.time() - t0, 2)
 
             # Si saltó captcha o consulta sospechosa, activar la estrategia de enfriamiento
-            if (self.is_imperva_blocked() or "Error: La consulta es sospechosa" in body_text) and retry_count < 2:
+            if (self.is_imperva_blocked() or "Error: La consulta es sospechosa" in body_text) and retry_count < max_retries:
                 self.handle_security_block(dni)
                 return self._execute_query(params, retry_count=retry_count + 1)
 
@@ -519,6 +553,10 @@ class SBSWorkerThread(threading.Thread):
                 }
 
             # Si no figura ninguna AFP válida y tampoco "No se encontraron resultados" confirmados:
+            # (reto de captcha o simple latencia del portal): reintentar antes de darlo por fallido
+            if retry_count < max_retries:
+                self.handle_security_block(dni)
+                return self._execute_query(params, retry_count=retry_count + 1)
             return {
                 'afiliado_spp': None,
                 'afp': 'RETO RECAPTCHA',
@@ -526,7 +564,7 @@ class SBSWorkerThread(threading.Thread):
                 'fecha_afiliacion': '-',
                 'situacion': 'RETO CAPTCHA',
                 'estado_sbs': 'RECAPTCHA_CHALLENGE',
-                'mensaje': 'El portal SBS presentó reCAPTCHA o la respuesta no cargó a tiempo.',
+                'mensaje': 'El portal SBS presentó reCAPTCHA o la respuesta no cargó a tiempo, tras varios reintentos.',
                 'tiempo_seg': elapsed,
                 'worker_id': self.worker_id
             }
@@ -574,6 +612,9 @@ class SBSWorkerThread(threading.Thread):
             
             if not self.is_browser_alive() or "closed" in err_msg.lower() or "target" in err_msg.lower():
                 self.close_browser()
+                if retry_count < max_retries:
+                    self.handle_security_block(dni)
+                    return self._execute_query(params, retry_count=retry_count + 1)
                 return {
                     'afiliado_spp': None,
                     'afp': 'VENTANA CERRADA',
@@ -581,16 +622,19 @@ class SBSWorkerThread(threading.Thread):
                     'fecha_afiliacion': '-',
                     'situacion': 'VENTANA CERRADA',
                     'estado_sbs': 'ERROR',
-                    'mensaje': 'La ventana del navegador se cerró.',
+                    'mensaje': 'La ventana del navegador se cerró tras varios reintentos.',
                     'tiempo_seg': elapsed,
                     'worker_id': self.worker_id
                 }
-            
+
             if "timeout" in err_msg.lower():
                 try:
                     self.page.goto(SBS_URL, wait_until="domcontentloaded", timeout=12000)
                 except Exception:
                     self.close_browser()
+                if retry_count < max_retries:
+                    self.handle_security_block(dni)
+                    return self._execute_query(params, retry_count=retry_count + 1)
                 return {
                     'afiliado_spp': None,
                     'afp': 'TIMEOUT SBS',
@@ -598,7 +642,7 @@ class SBSWorkerThread(threading.Thread):
                     'fecha_afiliacion': '-',
                     'situacion': 'LATENCIA SBS',
                     'estado_sbs': 'TIMEOUT',
-                    'mensaje': 'El portal SBS tardó en responder. Se reintentará.',
+                    'mensaje': 'El portal SBS tardó en responder, tras varios reintentos.',
                     'tiempo_seg': elapsed,
                     'worker_id': self.worker_id
                 }
@@ -608,6 +652,10 @@ class SBSWorkerThread(threading.Thread):
             except Exception:
                 self.close_browser()
 
+            if retry_count < max_retries:
+                self.handle_security_block(dni)
+                return self._execute_query(params, retry_count=retry_count + 1)
+
             return {
                 'afiliado_spp': None,
                 'afp': 'ERROR',
@@ -615,24 +663,43 @@ class SBSWorkerThread(threading.Thread):
                 'fecha_afiliacion': '-',
                 'situacion': 'ERROR CONEXIÓN',
                 'estado_sbs': 'ERROR',
-                'mensaje': f'Error en consulta SBS: {err_msg}',
+                'mensaje': f'Error en consulta SBS tras varios reintentos: {err_msg}',
                 'tiempo_seg': elapsed,
                 'worker_id': self.worker_id
             }
 
 
+def _normalize_delay(value):
+    """Acepta un número fijo (2.5) o un rango 'min-max' (10-20) para la espera entre consultas."""
+    if isinstance(value, str) and '-' in value:
+        lo_str, _, hi_str = value.partition('-')
+        try:
+            lo = max(0.0, float(lo_str.strip()))
+            hi = max(0.0, float(hi_str.strip()))
+            if hi < lo:
+                lo, hi = hi, lo
+            return f"{lo}-{hi}"
+        except ValueError:
+            return value.strip()
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        return value
+
+
 class SBSServiceManager:
     _instance = None
     _lock = threading.RLock()
-    CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'sbs_config.json')
+    CONFIG_FILE = data_path('sbs_config.json')
 
     def __init__(self):
-        self.concurrency = 1
+        self.concurrency = 3
         self.headless = False  # Por defecto visible en pantalla para la secretaria
-        self.delay_between = 1.0  # Pausa prudencial entre consultas consecutivas
-        self.block_cooldown = 45  # Tiempo de enfriamiento si la SBS detecta tráfico
-        self.max_retries = 5     # Reintentos continuos ante reto de captcha o latencia
+        self.delay_between = 2.0  # Pausa prudencial entre consultas consecutivas
+        self.block_cooldown = 5  # Tiempo de enfriamiento si la SBS detecta tráfico
+        self.max_retries = 25     # Reintentos continuos ante reto de captcha o latencia
         self.cooldown_until = 0   # Timestamp hasta cuando el sistema debe estar en pausa
+        self.attempt_status = {}  # dni -> número de intento en curso (para el tag "Revisando #N")
         self.task_queue = queue.Queue()
         self.workers = []
         self._load_persisted_config()
@@ -648,11 +715,11 @@ class SBSServiceManager:
                     if 'headless' in cfg:
                         self.headless = bool(cfg['headless'])
                     if 'delay_between' in cfg:
-                        self.delay_between = max(0.0, float(cfg['delay_between']))
+                        self.delay_between = _normalize_delay(cfg['delay_between'])
                     if 'block_cooldown' in cfg:
                         self.block_cooldown = max(1, int(cfg['block_cooldown']))
                     if 'max_retries' in cfg:
-                        self.max_retries = max(1, min(10, int(cfg['max_retries'])))
+                        self.max_retries = max(1, min(50, int(cfg['max_retries'])))
             except Exception as e:
                 print(f"[SBSServiceManager] No se pudo leer {self.CONFIG_FILE}: {e}")
 
@@ -707,11 +774,11 @@ class SBSServiceManager:
             if concurrency is not None:
                 self._update_worker_pool(int(concurrency))
             if delay_between is not None:
-                self.delay_between = max(0.0, float(delay_between))
+                self.delay_between = _normalize_delay(delay_between)
             if block_cooldown is not None:
                 self.block_cooldown = max(1, int(block_cooldown))
             if max_retries is not None:
-                self.max_retries = max(1, min(10, int(max_retries)))
+                self.max_retries = max(1, min(50, int(max_retries)))
 
             self._save_persisted_config()
 
@@ -728,9 +795,9 @@ class SBSServiceManager:
             return {
                 'concurrency': self.concurrency,
                 'headless': self.headless,
-                'delay_between': getattr(self, 'delay_between', 1.0),
-                'block_cooldown': getattr(self, 'block_cooldown', 45),
-                'max_retries': getattr(self, 'max_retries', 5)
+                'delay_between': getattr(self, 'delay_between', 2.0),
+                'block_cooldown': getattr(self, 'block_cooldown', 5),
+                'max_retries': getattr(self, 'max_retries', 25)
             }
 
     def set_concurrency(self, concurrency):
@@ -738,6 +805,18 @@ class SBSServiceManager:
 
     def get_concurrency(self):
         return self.concurrency
+
+    def set_attempt(self, dni, attempt_num):
+        with self._lock:
+            self.attempt_status[dni] = attempt_num
+
+    def clear_attempt(self, dni):
+        with self._lock:
+            self.attempt_status.pop(dni, None)
+
+    def get_attempts(self):
+        with self._lock:
+            return dict(self.attempt_status)
 
     def query_worker(self, dni, ape_pat, ape_mat, primer_nom, segundo_nom=""):
         res_queue = queue.Queue()
@@ -752,7 +831,10 @@ class SBSServiceManager:
             },
             'result_queue': res_queue
         })
-        timeout_wait = max(120, int(getattr(self, 'block_cooldown', 45)) * 2 + 30)
+        # Debe cubrir el peor caso de la cadena completa de reintentos internos
+        # (cada reintento implica una pausa de enfriamiento + reapertura de ventana + espera de respuesta)
+        per_retry_budget = int(getattr(self, 'block_cooldown', 5)) + 25
+        timeout_wait = max(120, (int(getattr(self, 'max_retries', 25)) + 1) * per_retry_budget)
         try:
             return res_queue.get(timeout=timeout_wait)
         except queue.Empty:
@@ -766,13 +848,28 @@ class SBSServiceManager:
                 'mensaje': 'Tiempo de consulta agotado',
                 'tiempo_seg': timeout_wait
             }
+        finally:
+            self.clear_attempt(dni)
 
     def stop(self):
         """Cierra inmediatamente todos los navegadores y drena la cola de tareas"""
         # 1. Cancelar cualquier cooldown activo
         self.cooldown_until = 0
 
-        # 2. Drenar la cola de tareas pendientes para que ningún request quede colgado
+        # 2. Marcar de inmediato a todos los workers como interrumpidos (para que cualquier
+        # ciclo de espera cooperativo corte de inmediato) y forzar el cierre a nivel de sistema
+        # operativo de TODAS las ventanas Chromium de este servicio en un solo paso. Esto no
+        # depende de atributos internos y frágiles de Playwright para hallar el proceso, así que
+        # desbloquea de inmediato cualquier llamada síncrona (click/fill/goto) que estuviera
+        # esperando una respuesta del navegador, en vez de esperar a que expire su propio timeout.
+        with self._lock:
+            for w in self.workers:
+                w.interrupted = True
+                w.running = False
+
+        kill_marked_chromium()
+
+        # 3. Drenar la cola de tareas pendientes para que ningún request quede colgado
         while not self.task_queue.empty():
             try:
                 task = self.task_queue.get_nowait()
@@ -791,18 +888,17 @@ class SBSServiceManager:
             except Exception:
                 break
 
-        # 3. Marcar a todos los workers como interrumpidos y cerrar/matar procesos de Chromium
+        # 4. Intento adicional best-effort sobre el proceso del driver de Playwright de cada
+        # worker (por si acaso), y limpieza de referencias
         with self._lock:
             for w in self.workers:
-                w.interrupted = True
-                w.running = False
                 try:
                     if w.playwright and hasattr(w.playwright, '_impl_obj'):
                         proc = getattr(w.playwright._impl_obj._connection._transport, '_proc', None)
                         if proc and proc.pid:
                             subprocess.call(f'taskkill /F /T /PID {proc.pid}', shell=True)
-                except Exception as e:
-                    print(f"[SBSServiceManager] Error al terminar proceso de worker {w.worker_id}: {e}")
+                except Exception:
+                    pass
 
                 w.page = None
                 w.context = None
@@ -810,7 +906,7 @@ class SBSServiceManager:
                 w.playwright = None
                 w.is_ready = False
 
-            # 4. Vaciar la lista y regenerar el pool limpio para permitir reanudar
+            # 5. Vaciar la lista y regenerar el pool limpio para permitir reanudar
             self.workers = []
             self._update_worker_pool(self.concurrency)
 

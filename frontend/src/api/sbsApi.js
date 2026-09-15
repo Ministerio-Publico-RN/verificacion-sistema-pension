@@ -16,7 +16,7 @@ export async function saveSbsConfig(config) {
   });
 }
 
-export async function verifyWorkerSBS(worker) {
+export async function verifyWorkerSBS(worker, executionId = null) {
   return await apiRequest('/api/sbs/verify-worker', {
     method: 'POST',
     body: JSON.stringify({
@@ -24,8 +24,15 @@ export async function verifyWorkerSBS(worker) {
       ape_paterno: worker.ape_paterno || '',
       ape_materno: worker.ape_materno || '',
       primer_nombre: worker.primer_nombre || '',
-      segundo_nombre: worker.segundo_nombre || ''
+      segundo_nombre: worker.segundo_nombre || '',
+      execution_id: executionId || undefined
     })
+  });
+}
+
+export async function getSbsAttempts() {
+  return await apiRequest('/api/sbs/attempts', {
+    method: 'GET'
   });
 }
 

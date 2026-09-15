@@ -29,7 +29,8 @@ export function TableControls({
     { key: 'semaforo', label: 'Semáforo de Validación' },
     { key: 'afpnet', label: 'Consulta AFPNet' },
     { key: 'nacim', label: 'Fecha Nacimiento' },
-    { key: 'cargo', label: 'Cargo / Dependencia' }
+    { key: 'cargo', label: 'Cargo / Dependencia' },
+    { key: 'origen', label: 'Origen (Planilla PEA)' }
   ];
 
   // Cerrar dropdown al hacer click afuera
@@ -73,8 +74,8 @@ export function TableControls({
         >
           <option value="all">Todos los registros ({totalCount})</option>
           <option value="coincidente">Validados (Iguales)</option>
-          <option value="discrepancia">Discrepancias</option>
-          <option value="latencia">Error al consultar</option>
+          <option value="discrepancia">Observados</option>
+          <option value="latencia">Fallaron al Consultar</option>
           <option value="snp">Inscritos en SNP (ONP)</option>
           <option value="sin_afiliacion">Nuevos sin Afiliación</option>
           <option value="filter_snp">Padrón: SNP (ONP)</option>

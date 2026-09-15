@@ -3,22 +3,22 @@ import { X, Sliders, Save, Check, Eye, EyeOff } from 'lucide-react';
 import { getSbsConfig, saveSbsConfig } from '../../api/sbsApi';
 
 export function SbsConfigModal({ isOpen, onClose, onConfigSaved }) {
-  const [concurrency, setConcurrency] = useState(1);
+  const [concurrency, setConcurrency] = useState(3);
   const [headless, setHeadless] = useState(false);
-  const [delaySec, setDelaySec] = useState(1.0);
-  const [maxRetries, setMaxRetries] = useState(5);
-  const [blockCooldownSec, setBlockCooldownSec] = useState(45);
+  const [delaySec, setDelaySec] = useState('2.0');
+  const [maxRetries, setMaxRetries] = useState(25);
+  const [blockCooldownSec, setBlockCooldownSec] = useState(5);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       getSbsConfig().then(cfg => {
         if (cfg) {
-          setConcurrency(cfg.concurrency || 1);
+          setConcurrency(cfg.concurrency || 3);
           setHeadless(Boolean(cfg.headless));
-          setDelaySec(cfg.delay_between !== undefined ? Number(cfg.delay_between) : 1.0);
-          setMaxRetries(cfg.max_retries || 5);
-          setBlockCooldownSec(cfg.block_cooldown !== undefined ? Number(cfg.block_cooldown) : 45);
+          setDelaySec(cfg.delay_between !== undefined ? String(cfg.delay_between) : '2.0');
+          setMaxRetries(cfg.max_retries || 25);
+          setBlockCooldownSec(cfg.block_cooldown !== undefined ? Number(cfg.block_cooldown) : 5);
         }
       }).catch(console.warn);
     }
@@ -32,7 +32,7 @@ export function SbsConfigModal({ isOpen, onClose, onConfigSaved }) {
       await saveSbsConfig({
         concurrency: Number(concurrency),
         headless: Boolean(headless),
-        delay_between: Number(delaySec),
+        delay_between: String(delaySec).trim(),
         max_retries: Number(maxRetries),
         block_cooldown: Number(blockCooldownSec)
       });
@@ -102,15 +102,16 @@ export function SbsConfigModal({ isOpen, onClose, onConfigSaved }) {
           <div className="form-group">
             <label>Tiempo de espera entre consultas (segundos):</label>
             <input
-              type="number"
-              min={0}
-              max={10}
-              step={0.1}
+              type="text"
+              inputMode="decimal"
+              placeholder="Ej: 2  ó  10-20"
               value={delaySec}
               onChange={(e) => setDelaySec(e.target.value)}
               className="mpfn-input"
             />
-            <small className="form-hint">Pausa prudencial entre búsquedas (recomendado: 1.0 a 2.0 s).</small>
+            <small className="form-hint">
+              Un número fijo ("2") o un rango ("10-20") para esperar un tiempo aleatorio entre ambos valores en cada consulta. Sin límite máximo.
+            </small>
           </div>
 
           <div className="form-group">
@@ -118,7 +119,7 @@ export function SbsConfigModal({ isOpen, onClose, onConfigSaved }) {
             <input
               type="number"
               min={1}
-              max={20}
+              max={50}
               value={maxRetries}
               onChange={(e) => setMaxRetries(e.target.value)}
               className="mpfn-input"

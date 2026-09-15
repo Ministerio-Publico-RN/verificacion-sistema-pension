@@ -1,5 +1,5 @@
 import React from 'react';
-import { UploadCloud, Table, Bot, FileCheck, Check } from 'lucide-react';
+import { UploadCloud, Bot, FileCheck, Check } from 'lucide-react';
 
 export function WorkflowStepper({ currentStep, onStepClick, hasData }) {
   const steps = [
@@ -11,18 +11,12 @@ export function WorkflowStepper({ currentStep, onStepClick, hasData }) {
     },
     {
       id: 2,
-      name: 'Padrón SIGA',
-      desc: 'Visualización y filtros iniciales',
-      icon: Table
-    },
-    {
-      id: 3,
       name: 'Verificación SBS',
-      desc: 'Bot automatizado en vivo',
+      desc: 'Padrón y bot automatizado en vivo',
       icon: Bot
     },
     {
-      id: 4,
+      id: 3,
       name: 'Resultados y Reporte',
       desc: 'Semáforos y discrepancias',
       icon: FileCheck

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Pause, Square, Settings, Globe, CheckCircle, FileCheck, ArrowRight, Clock } from 'lucide-react';
+import { Play, Pause, Square, Settings, Globe, CheckCircle, FileCheck, ArrowRight, Clock, PlayCircle, RotateCw } from 'lucide-react';
 
 export function SbsPanel({
   status,
@@ -9,12 +9,16 @@ export function SbsPanel({
   onPause,
   onResume,
   onStop,
+  onContinue,
   onOpenConfig,
   totalWorkers,
-  onGoToResults
+  onGoToResults,
+  onRetryFailed,
+  failedCount = 0
 }) {
   const isRunning = status === 'running';
   const isPaused = status === 'paused';
+  const isStopped = status === 'stopped';
   const isCompleted = status === 'completed';
 
   return (
@@ -29,7 +33,7 @@ export function SbsPanel({
         </div>
 
         <div className="scraper-actions">
-          {!isRunning && !isPaused && (
+          {!isRunning && !isPaused && !isStopped && !isCompleted && (
             <button
               className="mpfn-btn-primary"
               disabled={totalWorkers === 0}
@@ -58,15 +62,27 @@ export function SbsPanel({
             </button>
           )}
 
-          {(progress.current > 0 || isCompleted) && onGoToResults && (
+          {isStopped && onContinue && (
+            <button className="mpfn-btn-primary" onClick={onContinue} type="button">
+              <PlayCircle size={15} /> Continuar ejecución
+            </button>
+          )}
+
+          {isCompleted && failedCount > 0 && onRetryFailed && (
+            <button className="mpfn-btn-warning" onClick={onRetryFailed} type="button">
+              <RotateCw size={14} /> Ejecutar todos los fallidos ({failedCount})
+            </button>
+          )}
+
+          {(isCompleted || isStopped) && onGoToResults && (
             <button
               className="mpfn-btn-outline mpfn-btn-results-link"
               onClick={onGoToResults}
-              title="Ir al Paso 4 para ver métricas de semáforos, discrepancias y exportar"
+              title="Ver métricas de semáforos, discrepancias y exportar"
               type="button"
             >
               <FileCheck size={14} className="text-gold" />
-              <span>Ver Resultados (Paso 4)</span>
+              <span>Ver Resultados</span>
               <ArrowRight size={13} />
             </button>
           )}
@@ -82,20 +98,20 @@ export function SbsPanel({
         </div>
       </div>
 
-      {(isRunning || isPaused || isCompleted || progress.total > 0) && (
+      {(isRunning || isPaused || isStopped || isCompleted || progress.total > 0) && (
         <div className="scraper-progress-section">
           <div className="progress-labels">
             <span>
               Progreso: <strong>{progress.current}</strong> / {progress.total} consultas ({progress.percent}%)
             </span>
             <div className="progress-meta-right">
-              <span className="execution-timer">
-                <Clock size={13} /> {isCompleted ? 'Tiempo total: ' : 'Tiempo: '} <strong>{elapsedTime || '00:00'}</strong>
-              </span>
               <span className="status-label">
-                {isRunning && <span className="text-warning">En ejecución...</span>}
+                {isStopped && <span className="text-muted">Detenido</span>}
                 {isPaused && <span className="text-muted">En pausa</span>}
                 {isCompleted && <span className="text-success"><CheckCircle size={13} /> Finalizado</span>}
+              </span>
+              <span className="execution-timer">
+                <Clock size={13} /> {isCompleted ? 'Tiempo total: ' : 'Tiempo: '} <strong>{elapsedTime || '00:00'}</strong>
               </span>
             </div>
           </div>

@@ -85,9 +85,44 @@ def parse_date_to_dmy(raw_val):
 
     return s
 
+AFP_CODE_MAP = {'02': 'PROFUTURO', '03': 'INTEGRA', '05': 'PRIMA', '06': 'HABITAT'}
+SNP_REGI_CODES = {'19990', 'E-19990'}
+EXONERADO_CODES = {'E-AFP', 'EXONERA', 'E-CM'}
+
+
+def resolve_previsiona_pea(regi_pens, codi_afps):
+    """
+    Resuelve el régimen previsional SIGA para el esquema de "Planilla PEA"
+    (columnas REGI_PENS_ / CODI_AFPS_ con códigos, en vez de un texto libre).
+    Reglas confirmadas por el MPFN:
+      - Está en AFP si CODI_AFPS_ trae un código (02/03/05/06), sin importar REGI_PENS_.
+        Si además REGI_PENS_ es E-AFP/EXONERA/E-CM, sigue en esa AFP pero exonerado de aportar.
+      - Está en SNP solo si CODI_AFPS_ está vacío y REGI_PENS_ es 19990 (aporta) o E-19990 (exonerado).
+      - REGI_PENS_ = 20530 (régimen especial / Cédula Viva) tampoco figura en SBS, se trata igual que SNP.
+      - En blanco (sin código de AFP ni régimen) equivale a SNP/exonerado en este reporte cerrado de PEA.
+    """
+    afp_name = AFP_CODE_MAP.get((codi_afps or '').strip())
+    regi = (regi_pens or '').strip().upper()
+
+    if afp_name:
+        return f"{afp_name} (Exonerado de aporte)" if regi in EXONERADO_CODES else afp_name
+
+    if regi in SNP_REGI_CODES:
+        exon = " (Exonerado de aporte)" if regi == 'E-19990' else ""
+        return f"SNP (ONP) - D.L. 19990{exon}"
+
+    if regi == '20530':
+        return "RÉGIMEN ESPECIAL D.L. 20530"
+
+    if not regi:
+        return "SNP (ONP) / EXONERADO"
+
+    return regi
+
+
 class SigaParser:
     @staticmethod
-    def read_dbf(filepath):
+    def read_dbf(filepath, origen=None):
         """
         Lee directamente la estructura binaria de un archivo DBF de dBase III / FoxPro
         sin requerir librerías externas pesadas.
@@ -129,14 +164,14 @@ class SigaParser:
                     val_str = raw_val.decode('latin1', errors='ignore').strip()
                     row[name] = clean_mojibake(val_str)
                 
-                normalized = SigaParser._normalize_record(row)
+                normalized = SigaParser._normalize_record(row, origen=origen)
                 if normalized and normalized.get('dni'):
                     records.append(normalized)
-            
+
             return records
 
     @staticmethod
-    def _normalize_record(raw):
+    def _normalize_record(raw, origen=None):
         """
         Normaliza los nombres de campos del SIGA/Excel/CSV a un estándar unificado
         """
@@ -175,11 +210,15 @@ class SigaParser:
         if not dni:
             return None
 
+        # Esquema "Planilla PEA" (Pensionistas/Nombrados/CAS/Contratados): trae REGI_PENS_/CODI_AFPS_
+        # con códigos en vez de texto libre, y el esquema de Altas nunca tiene estas columnas.
+        is_pea_schema = 'CODI_AFPS_' in clean_raw or 'REGI_PENS_' in clean_raw
+
         # 2. Extraer Nombres y Apellidos
         ape_pat = clean_raw.get('APE_PAT') or clean_raw.get('APELLIDO_PATERNO') or clean_raw.get('PATERNO') or clean_raw.get('APELLIDO_PAT') or ''
         ape_mat = clean_raw.get('APE_MAT') or clean_raw.get('APELLIDO_MATERNO') or clean_raw.get('MATERNO') or clean_raw.get('APELLIDO_MAT') or ''
         nom_emp = clean_raw.get('NOM_EMP') or clean_raw.get('NOMBRES') or clean_raw.get('NOMBRE_TRAB') or clean_raw.get('NOMBRE') or ''
-        nombre_completo = clean_raw.get('NOMBRE_COMPLETO') or clean_raw.get('APELLIDOS_NOMBRES') or clean_raw.get('APELLIDOS_Y_NOMBRES') or clean_raw.get('TRABAJADOR') or ''
+        nombre_completo = clean_raw.get('NOMBRE_COMPLETO') or clean_raw.get('APELLIDOS_NOMBRES') or clean_raw.get('APELLIDOS_Y_NOMBRES') or clean_raw.get('TRABAJADOR') or clean_raw.get('NOMB_CORT_') or ''
 
         # Manejar formato AFPNET positional (COL_2=Paterno, COL_3=Materno, COL_4=Nombres)
         if not ape_pat and not ape_mat and not nom_emp:
@@ -248,8 +287,11 @@ class SigaParser:
         fecha_nac = parse_date_to_dmy(nacim_raw)
 
         # 4. Régimen previsional en SIGA
-        previsiona_siga = clean_raw.get('PREVISIONA') or clean_raw.get('REGIMEN') or clean_raw.get('SISTEMA_PENSION') or clean_raw.get('AFP') or clean_raw.get('REGIMEN_PENSIONARIO') or ''
-        previsiona_siga = clean_mojibake(previsiona_siga)
+        if is_pea_schema:
+            previsiona_siga = resolve_previsiona_pea(clean_raw.get('REGI_PENS_', ''), clean_raw.get('CODI_AFPS_', ''))
+        else:
+            previsiona_siga = clean_raw.get('PREVISIONA') or clean_raw.get('REGIMEN') or clean_raw.get('SISTEMA_PENSION') or clean_raw.get('AFP') or clean_raw.get('REGIMEN_PENSIONARIO') or ''
+            previsiona_siga = clean_mojibake(previsiona_siga)
         
         afiliacion_raw = (
             clean_raw.get('AFILIACION') or 
@@ -277,10 +319,11 @@ class SigaParser:
         afiliacion_siga = parse_date_to_dmy(afiliacion_raw)
 
         cuspp_siga = (
-            clean_raw.get('CUSPP') or 
-            clean_raw.get('COD_CUSPP') or 
-            clean_raw.get('NUM_CUSPP') or 
-            clean_raw.get('CODIGO_CUSPP') or ''
+            clean_raw.get('CUSPP') or
+            clean_raw.get('COD_CUSPP') or
+            clean_raw.get('NUM_CUSPP') or
+            clean_raw.get('CODIGO_CUSPP') or
+            clean_raw.get('CODI_CUSP_') or ''
         )
         if not cuspp_siga:
             for k, v in clean_raw.items():
@@ -303,14 +346,15 @@ class SigaParser:
             'previsiona_siga': previsiona_siga,
             'afiliacion_siga': afiliacion_siga,
             'cuspp_siga': cuspp_siga,
-            'cargo': clean_raw.get('CARGO', ''),
+            'cargo': clean_raw.get('CARGO_DESC') or clean_raw.get('CARGO', ''),
             'monto_mensual': clean_raw.get('MONTO_MENS', ''),
             'regimen_laboral': clean_raw.get('DESC_REGL_', ''),
+            'origen_planilla': origen,
             'raw_data': raw
         }
 
     @staticmethod
-    def _read_csv(filepath):
+    def _read_csv(filepath, origen=None):
         records = []
         for enc in ['utf-8-sig', 'utf-8', 'latin1', 'cp1252']:
             try:
@@ -326,7 +370,7 @@ class SigaParser:
                     if reader.fieldnames:
                         reader.fieldnames = [str(fn).replace('\ufeff', '').strip().strip('"').strip("'") for fn in reader.fieldnames if fn]
                     for row in reader:
-                        norm = SigaParser._normalize_record(row)
+                        norm = SigaParser._normalize_record(row, origen=origen)
                         if norm and norm.get('dni'):
                             records.append(norm)
                     if records:
@@ -336,7 +380,7 @@ class SigaParser:
         return records
 
     @staticmethod
-    def _read_xlsx(filepath):
+    def _read_xlsx(filepath, origen=None):
         records = []
         with zipfile.ZipFile(filepath, 'r') as z:
             shared_strings = []
@@ -394,14 +438,14 @@ class SigaParser:
                     named_row[col_name] = val
                     named_row[f"COL_{col}"] = val
                 
-                norm = SigaParser._normalize_record(named_row)
+                norm = SigaParser._normalize_record(named_row, origen=origen)
                 if norm and norm.get('dni'):
                     records.append(norm)
 
         return records
 
     @staticmethod
-    def _read_xml_xls(filepath):
+    def _read_xml_xls(filepath, origen=None):
         records = []
         with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read()
@@ -435,23 +479,23 @@ class SigaParser:
                 row_dict[key] = val
                 row_dict[f"COL_{i}"] = val
 
-            norm = SigaParser._normalize_record(row_dict)
+            norm = SigaParser._normalize_record(row_dict, origen=origen)
             if norm and norm.get('dni'):
                 records.append(norm)
         return records
 
     @staticmethod
-    def _read_xls(filepath):
+    def _read_xls(filepath, origen=None):
         with open(filepath, 'rb') as f:
             header = f.read(50)
-        
+
         if b'<?xml' in header or b'<Workbook' in header:
-            return SigaParser._read_xml_xls(filepath)
-        
-        return SigaParser._read_biff_xls(filepath)
+            return SigaParser._read_xml_xls(filepath, origen=origen)
+
+        return SigaParser._read_biff_xls(filepath, origen=origen)
 
     @staticmethod
-    def _read_biff_xls(filepath):
+    def _read_biff_xls(filepath, origen=None):
         with open(filepath, 'rb') as f:
             data = f.read()
 
@@ -552,25 +596,29 @@ class SigaParser:
                 key = headers[i] if i < len(headers) else f"COL_{i}"
                 row_dict[key] = val
                 row_dict[f"COL_{i}"] = val
-            norm = SigaParser._normalize_record(row_dict)
+            norm = SigaParser._normalize_record(row_dict, origen=origen)
             if norm and norm.get('dni'):
                 records.append(norm)
         return records
 
     @staticmethod
-    def parse_file(filepath):
+    def parse_file(filepath, origen=None):
         """
         Punto de entrada universal para procesar nóminas de trabajadores
         en formatos .DBF, .XLSX, .XLS, .CSV y .TXT
+
+        `origen` (opcional) etiqueta cada registro con la planilla de origen
+        (ej. 'PENSIONISTAS', 'NOMBRADOS', 'CAS', 'CONTRATADOS') cuando se
+        combinan varios archivos en una sola verificación de la PEA.
         """
         ext = os.path.splitext(filepath)[1].lower()
         if ext == '.dbf':
-            return SigaParser.read_dbf(filepath)
+            return SigaParser.read_dbf(filepath, origen=origen)
         elif ext == '.xlsx':
-            return SigaParser._read_xlsx(filepath)
+            return SigaParser._read_xlsx(filepath, origen=origen)
         elif ext == '.xls':
-            return SigaParser._read_xls(filepath)
+            return SigaParser._read_xls(filepath, origen=origen)
         elif ext in ['.csv', '.txt']:
-            return SigaParser._read_csv(filepath)
+            return SigaParser._read_csv(filepath, origen=origen)
         else:
             raise ValueError(f"Extensión de archivo no soportada actualmente: {ext}. Formatos permitidos: .DBF, .XLSX, .XLS, .CSV")
