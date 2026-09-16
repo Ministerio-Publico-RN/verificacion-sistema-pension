@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { X, Download, Printer, FileText, Image as ImageIcon, ChevronDown, Check } from 'lucide-react';
+import { X, Download, FileText, Image as ImageIcon, ChevronDown } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
@@ -41,6 +41,7 @@ export function SbsFichaModal({ worker, onClose }) {
   const situacion = sbs.situacion && sbs.situacion !== '-' ? sbs.situacion : 'Afiliado';
   const fechaDevengue = sbs.fecha_devengue || 'No hay datos';
 
+  // Descarga directa a PDF de 1 página exacta
   const handleDownloadPdf = async () => {
     if (!printAreaRef.current || downloading) return;
     setDownloading(true);
@@ -60,7 +61,7 @@ export function SbsFichaModal({ worker, onClose }) {
         format: 'a4'
       });
       const pageWidth = pdf.internal.pageSize.getWidth();
-      const margin = 36; // margen lateral
+      const margin = 36;
       const imgWidth = pageWidth - (margin * 2);
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
       
@@ -75,6 +76,7 @@ export function SbsFichaModal({ worker, onClose }) {
     }
   };
 
+  // Descarga directa a imagen PNG
   const handleDownloadPng = async () => {
     if (!printAreaRef.current || downloading) return;
     setDownloading(true);
@@ -100,8 +102,76 @@ export function SbsFichaModal({ worker, onClose }) {
     }
   };
 
+  // Impresión limpia y aislada usando un iframe oculto (sin hojas en blanco)
   const handlePrint = () => {
-    window.print();
+    if (!printAreaRef.current) return;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+
+    const iframeDoc = iframe.contentWindow.document;
+    iframeDoc.open();
+    iframeDoc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Reporte de Situación Previsional - SBS</title>
+          <meta charset="utf-8">
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 15mm 20mm;
+            }
+            body {
+              font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
+              font-size: 12px;
+              line-height: 1.5;
+              color: #333333;
+              margin: 0;
+              padding: 0;
+              background: #ffffff;
+            }
+            table {
+              border-collapse: collapse;
+              width: 100%;
+            }
+            td {
+              vertical-align: top;
+            }
+            .sbs-screen-actions {
+              display: none !important;
+            }
+            input[type="text"] {
+              border: 1px solid #cbd5e1;
+              padding: 4px 8px;
+              background: #f1f5f9;
+              font-family: inherit;
+              font-size: 12px;
+            }
+          </style>
+        </head>
+        <body>
+          ${printAreaRef.current.innerHTML}
+        </body>
+      </html>
+    `);
+    iframeDoc.close();
+
+    setTimeout(() => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      setTimeout(() => {
+        try {
+          document.body.removeChild(iframe);
+        } catch (_) {}
+      }, 1000);
+    }, 250);
   };
 
   return (
@@ -125,7 +195,7 @@ export function SbsFichaModal({ worker, onClose }) {
           lineHeight: 1.5
         }}
       >
-        {/* Barra superior de herramientas (no imprimible) */}
+        {/* Barra superior de herramientas: SOLO "Descargar ficha" y cerrar (sin botón imprimir arriba) */}
         <div className="sbs-ficha-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', background: '#002469', color: '#ffffff', padding: '2px 8px', borderRadius: '3px', fontWeight: 'bold' }}>
@@ -225,26 +295,6 @@ export function SbsFichaModal({ worker, onClose }) {
                 </div>
               )}
             </div>
-
-            <button
-              type="button"
-              onClick={handlePrint}
-              style={{
-                background: '#f8fafc',
-                color: '#334155',
-                border: '1px solid #cbd5e1',
-                padding: '4px 10px',
-                borderRadius: '3px',
-                cursor: 'pointer',
-                fontSize: '11px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}
-              title="Imprimir directamente"
-            >
-              <Printer size={13} /> Imprimir
-            </button>
 
             <button
               type="button"
@@ -372,7 +422,7 @@ export function SbsFichaModal({ worker, onClose }) {
                 En caso tuviera dudas con relación al presente documento, sirvase contactar a la Superintendencia al teléfono gratuito a nivel nacional : 0800-10840.
               </div>
 
-              {/* Botones Ficticios de la SBS para completar fidelidad visual */}
+              {/* Botones Fieles a la SBS: "Consultar otro registro" e "Imprimir" tal como estaban originalmente */}
               <div className="sbs-screen-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
                 <button
                   type="button"
@@ -391,8 +441,7 @@ export function SbsFichaModal({ worker, onClose }) {
                 </button>
                 <button
                   type="button"
-                  onClick={handleDownloadPdf}
-                  disabled={downloading}
+                  onClick={handlePrint}
                   style={{
                     backgroundColor: '#2174E5',
                     color: '#ffffff',
@@ -400,34 +449,11 @@ export function SbsFichaModal({ worker, onClose }) {
                     borderRadius: '.21428571em',
                     padding: '5px 16px',
                     fontSize: '12px',
-                    cursor: downloading ? 'wait' : 'pointer',
-                    fontWeight: 'bold',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
+                    cursor: 'pointer',
+                    fontWeight: 'bold'
                   }}
                 >
-                  <Download size={13} /> {downloading && downloadFormat === 'pdf' ? 'Generando...' : 'Descargar PDF'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDownloadPng}
-                  disabled={downloading}
-                  style={{
-                    backgroundColor: '#f1f5f9',
-                    color: '#1e293b',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '.21428571em',
-                    padding: '5px 16px',
-                    fontSize: '12px',
-                    cursor: downloading ? 'wait' : 'pointer',
-                    fontWeight: 'bold',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  <ImageIcon size={13} /> {downloading && downloadFormat === 'png' ? 'Generando...' : 'Descargar PNG'}
+                  Imprimir
                 </button>
               </div>
             </div>
@@ -494,11 +520,11 @@ export function SbsFichaModal({ worker, onClose }) {
                 </div>
               </div>
 
+              {/* Botón Fiel a la SBS: solo Imprimir en la parte inferior */}
               <div className="sbs-screen-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '14px' }}>
                 <button
                   type="button"
-                  onClick={handleDownloadPdf}
-                  disabled={downloading}
+                  onClick={handlePrint}
                   style={{
                     backgroundColor: '#2174E5',
                     color: '#ffffff',
@@ -506,93 +532,17 @@ export function SbsFichaModal({ worker, onClose }) {
                     borderRadius: '.21428571em',
                     padding: '5px 16px',
                     fontSize: '12px',
-                    cursor: downloading ? 'wait' : 'pointer',
-                    fontWeight: 'bold',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
+                    cursor: 'pointer',
+                    fontWeight: 'bold'
                   }}
                 >
-                  <Download size={13} /> {downloading && downloadFormat === 'pdf' ? 'Generando...' : 'Descargar PDF'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDownloadPng}
-                  disabled={downloading}
-                  style={{
-                    backgroundColor: '#f1f5f9',
-                    color: '#1e293b',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '.21428571em',
-                    padding: '5px 16px',
-                    fontSize: '12px',
-                    cursor: downloading ? 'wait' : 'pointer',
-                    fontWeight: 'bold',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  <ImageIcon size={13} /> {downloading && downloadFormat === 'png' ? 'Generando...' : 'Descargar PNG'}
+                  Imprimir Constancia
                 </button>
               </div>
             </div>
           )}
         </div>
       </div>
-
-      {/* Estilos para impresión nativa aislada y limpia */}
-      <style>{`
-        @media print {
-          @page {
-            size: A4 portrait;
-            margin: 12mm;
-          }
-          html, body {
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #ffffff !important;
-            height: auto !important;
-            overflow: visible !important;
-          }
-          /* Ocultar aplicación base para que no genere páginas en blanco */
-          .mpfn-app, .mpfn-header, .mpfn-footer, .stepper-container {
-            display: none !important;
-          }
-          .mpfn-modal-backdrop:not(.sbs-ficha-backdrop) {
-            display: none !important;
-          }
-          .sbs-ficha-backdrop {
-            position: static !important;
-            display: block !important;
-            background: #ffffff !important;
-            width: 100% !important;
-            height: auto !important;
-            overflow: visible !important;
-            padding: 0 !important;
-            margin: 0 !important;
-          }
-          .sbs-ficha-window {
-            position: static !important;
-            box-shadow: none !important;
-            border: none !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            overflow: visible !important;
-          }
-          .sbs-ficha-toolbar, .sbs-screen-actions {
-            display: none !important;
-          }
-          .sbs-print-area {
-            display: block !important;
-            width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-        }
-      `}</style>
     </div>
   );
 }
