@@ -1,8 +1,27 @@
-import React from 'react';
-import { X, Printer } from 'lucide-react';
+import React, { useRef, useState, useEffect } from 'react';
+import { X, Download, Printer, FileText, Image as ImageIcon, ChevronDown, Check } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 export function SbsFichaModal({ worker, onClose }) {
   if (!worker) return null;
+
+  const printAreaRef = useRef(null);
+  const dropdownRef = useRef(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadFormat, setDownloadFormat] = useState(null); // 'pdf' | 'png' | null
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  // Cerrar dropdown al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const sbs = worker.sbs_resultado || {};
   const isAfiliado = sbs.afiliado_spp === true || sbs.estado_sbs === 'ENCONTRADO' || ['PROFUTURO', 'INTEGRA', 'PRIMA', 'HABITAT'].includes((sbs.afp || '').toUpperCase());
@@ -21,6 +40,65 @@ export function SbsFichaModal({ worker, onClose }) {
   const cuspp = sbs.cuspp && sbs.cuspp !== '-' ? sbs.cuspp : (worker.cuspp || '-');
   const situacion = sbs.situacion && sbs.situacion !== '-' ? sbs.situacion : 'Afiliado';
   const fechaDevengue = sbs.fecha_devengue || 'No hay datos';
+
+  const handleDownloadPdf = async () => {
+    if (!printAreaRef.current || downloading) return;
+    setDownloading(true);
+    setDownloadFormat('pdf');
+    setShowDropdown(false);
+    try {
+      const canvas = await html2canvas(printAreaRef.current, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        logging: false
+      });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'pt',
+        format: 'a4'
+      });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const margin = 36; // margen lateral
+      const imgWidth = pageWidth - (margin * 2);
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      
+      pdf.addImage(imgData, 'PNG', margin, 36, imgWidth, imgHeight);
+      pdf.save(`ficha_sbs_${worker.dni}.pdf`);
+    } catch (err) {
+      console.error('Error al generar PDF de ficha SBS:', err);
+      alert('Hubo un error al generar el archivo PDF.');
+    } finally {
+      setDownloading(false);
+      setDownloadFormat(null);
+    }
+  };
+
+  const handleDownloadPng = async () => {
+    if (!printAreaRef.current || downloading) return;
+    setDownloading(true);
+    setDownloadFormat('png');
+    setShowDropdown(false);
+    try {
+      const canvas = await html2canvas(printAreaRef.current, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        logging: false
+      });
+      const link = document.createElement('a');
+      link.download = `ficha_sbs_${worker.dni}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (err) {
+      console.error('Error al generar PNG de ficha SBS:', err);
+      alert('Hubo un error al generar la imagen PNG.');
+    } finally {
+      setDownloading(false);
+      setDownloadFormat(null);
+    }
+  };
 
   const handlePrint = () => {
     window.print();
@@ -57,26 +135,117 @@ export function SbsFichaModal({ worker, onClose }) {
               DNI: <strong>{worker.dni}</strong> — {apePat} {apeMat}, {nombres}
             </span>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Botón Descargar Ficha con opciones PDF y PNG */}
+            <div ref={dropdownRef} style={{ position: 'relative' }}>
+              <button
+                type="button"
+                onClick={() => setShowDropdown(prev => !prev)}
+                disabled={downloading}
+                style={{
+                  background: '#2174E5',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '5px 12px',
+                  borderRadius: '3px',
+                  cursor: downloading ? 'wait' : 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: '11px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+                title="Descargar Ficha en PDF o PNG"
+              >
+                <Download size={13} />
+                {downloading ? `Generando ${downloadFormat?.toUpperCase()}...` : 'Descargar ficha'}
+                <ChevronDown size={12} />
+              </button>
+
+              {showDropdown && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 4px)',
+                    right: 0,
+                    background: '#ffffff',
+                    borderRadius: '4px',
+                    boxShadow: '0 6px 18px rgba(0,0,0,0.18)',
+                    border: '1px solid #cbd5e1',
+                    zIndex: 120,
+                    minWidth: '165px',
+                    overflow: 'hidden'
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={handleDownloadPdf}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '9px 12px',
+                      background: 'none',
+                      border: 'none',
+                      textAlign: 'left',
+                      fontSize: '12px',
+                      color: '#1e293b',
+                      cursor: 'pointer'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                  >
+                    <FileText size={15} color="#dc2626" />
+                    <span>Descargar <strong>PDF</strong></span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDownloadPng}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '9px 12px',
+                      background: 'none',
+                      border: 'none',
+                      textAlign: 'left',
+                      fontSize: '12px',
+                      color: '#1e293b',
+                      cursor: 'pointer',
+                      borderTop: '1px solid #f1f5f9'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                  >
+                    <ImageIcon size={15} color="#2563eb" />
+                    <span>Descargar <strong>PNG</strong></span>
+                  </button>
+                </div>
+              )}
+            </div>
+
             <button
               type="button"
               onClick={handlePrint}
               style={{
-                background: '#2174E5',
-                color: '#ffffff',
-                border: 'none',
-                padding: '4px 12px',
+                background: '#f8fafc',
+                color: '#334155',
+                border: '1px solid #cbd5e1',
+                padding: '4px 10px',
                 borderRadius: '3px',
                 cursor: 'pointer',
-                fontWeight: 'bold',
                 fontSize: '11px',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '5px'
+                gap: '4px'
               }}
+              title="Imprimir directamente"
             >
-              <Printer size={13} /> Imprimir Ficha
+              <Printer size={13} /> Imprimir
             </button>
+
             <button
               type="button"
               onClick={onClose}
@@ -96,7 +265,7 @@ export function SbsFichaModal({ worker, onClose }) {
         </div>
 
         {/* CONTENEDOR EXACTO SBS (Sbs Ficha Canvas) */}
-        <div className="sbs-print-area" style={{ background: '#ffffff', padding: '6px' }}>
+        <div className="sbs-print-area" ref={printAreaRef} style={{ background: '#ffffff', padding: '6px' }}>
           {isAfiliado ? (
             <div>
               {/* Título Principal */}
@@ -222,7 +391,8 @@ export function SbsFichaModal({ worker, onClose }) {
                 </button>
                 <button
                   type="button"
-                  onClick={handlePrint}
+                  onClick={handleDownloadPdf}
+                  disabled={downloading}
                   style={{
                     backgroundColor: '#2174E5',
                     color: '#ffffff',
@@ -230,11 +400,34 @@ export function SbsFichaModal({ worker, onClose }) {
                     borderRadius: '.21428571em',
                     padding: '5px 16px',
                     fontSize: '12px',
-                    cursor: 'pointer',
-                    fontWeight: 'bold'
+                    cursor: downloading ? 'wait' : 'pointer',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
                   }}
                 >
-                  Imprimir
+                  <Download size={13} /> {downloading && downloadFormat === 'pdf' ? 'Generando...' : 'Descargar PDF'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadPng}
+                  disabled={downloading}
+                  style={{
+                    backgroundColor: '#f1f5f9',
+                    color: '#1e293b',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '.21428571em',
+                    padding: '5px 16px',
+                    fontSize: '12px',
+                    cursor: downloading ? 'wait' : 'pointer',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <ImageIcon size={13} /> {downloading && downloadFormat === 'png' ? 'Generando...' : 'Descargar PNG'}
                 </button>
               </div>
             </div>
@@ -304,7 +497,8 @@ export function SbsFichaModal({ worker, onClose }) {
               <div className="sbs-screen-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '14px' }}>
                 <button
                   type="button"
-                  onClick={handlePrint}
+                  onClick={handleDownloadPdf}
+                  disabled={downloading}
                   style={{
                     backgroundColor: '#2174E5',
                     color: '#ffffff',
@@ -312,11 +506,34 @@ export function SbsFichaModal({ worker, onClose }) {
                     borderRadius: '.21428571em',
                     padding: '5px 16px',
                     fontSize: '12px',
-                    cursor: 'pointer',
-                    fontWeight: 'bold'
+                    cursor: downloading ? 'wait' : 'pointer',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
                   }}
                 >
-                  Imprimir Constancia
+                  <Download size={13} /> {downloading && downloadFormat === 'pdf' ? 'Generando...' : 'Descargar PDF'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadPng}
+                  disabled={downloading}
+                  style={{
+                    backgroundColor: '#f1f5f9',
+                    color: '#1e293b',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '.21428571em',
+                    padding: '5px 16px',
+                    fontSize: '12px',
+                    cursor: downloading ? 'wait' : 'pointer',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <ImageIcon size={13} /> {downloading && downloadFormat === 'png' ? 'Generando...' : 'Descargar PNG'}
                 </button>
               </div>
             </div>
@@ -324,41 +541,55 @@ export function SbsFichaModal({ worker, onClose }) {
         </div>
       </div>
 
-      {/* Estilos para impresión nativa idéntica a SBS */}
+      {/* Estilos para impresión nativa aislada y limpia */}
       <style>{`
         @media print {
-          body * {
-            visibility: hidden !important;
+          @page {
+            size: A4 portrait;
+            margin: 12mm;
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            height: auto !important;
+            overflow: visible !important;
+          }
+          /* Ocultar aplicación base para que no genere páginas en blanco */
+          .mpfn-app, .mpfn-header, .mpfn-footer, .stepper-container {
+            display: none !important;
+          }
+          .mpfn-modal-backdrop:not(.sbs-ficha-backdrop) {
+            display: none !important;
           }
           .sbs-ficha-backdrop {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
+            position: static !important;
+            display: block !important;
+            background: #ffffff !important;
             width: 100% !important;
             height: auto !important;
-            background: none !important;
+            overflow: visible !important;
             padding: 0 !important;
             margin: 0 !important;
           }
           .sbs-ficha-window {
+            position: static !important;
             box-shadow: none !important;
             border: none !important;
             width: 100% !important;
             max-width: 100% !important;
             padding: 0 !important;
             margin: 0 !important;
-          }
-          .sbs-print-area, .sbs-print-area * {
-            visibility: visible !important;
-          }
-          .sbs-print-area {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
+            overflow: visible !important;
           }
           .sbs-ficha-toolbar, .sbs-screen-actions {
             display: none !important;
+          }
+          .sbs-print-area {
+            display: block !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
         }
       `}</style>

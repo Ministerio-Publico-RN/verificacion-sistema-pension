@@ -1,6 +1,6 @@
 {
   "concurrency": 3,
-  "headless": true,
+  "headless": false,
   "delay_between": "3.0-7.0",
   "block_cooldown": "3.0-7.0",
   "max_retries": 25
