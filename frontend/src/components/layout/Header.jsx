@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import insigniaImg from '../../assets/mp-insignia-gold.png';
-import { Moon, Sun, History } from 'lucide-react';
+import { Moon, Sun, History, Home } from 'lucide-react';
 
-export function Header({ onOpenHistory }) {
+export function Header({ onOpenHistory, onGoHome }) {
   const [theme, setTheme] = useState('light');
 
   useEffect(() => {
@@ -24,14 +24,26 @@ export function Header({ onOpenHistory }) {
       </div>
 
       <div className="mpfn-header-actions">
+        {onGoHome && (
+          <button
+            className="mpfn-theme-btn mpfn-history-btn"
+            onClick={onGoHome}
+            title="Volver al inicio"
+            type="button"
+          >
+            <Home size={16} />
+            <span>Volver al inicio</span>
+          </button>
+        )}
         {onOpenHistory && (
           <button
-            className="mpfn-theme-btn"
+            className="mpfn-theme-btn mpfn-history-btn"
             onClick={onOpenHistory}
             title="Historial de ejecuciones"
             type="button"
           >
             <History size={16} />
+            <span>Historial de ejecuciones</span>
           </button>
         )}
         <button

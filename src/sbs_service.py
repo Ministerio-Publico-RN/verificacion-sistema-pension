@@ -13,6 +13,7 @@ import queue
 import threading
 import subprocess
 import json
+import random
 
 
 from playwright.sync_api import sync_playwright
@@ -47,6 +48,51 @@ def kill_marked_chromium():
         )
     except Exception as e:
         print(f"[SBSServiceManager] Error al forzar cierre de ventanas Chromium: {e}")
+
+
+def send_marked_windows_to_back():
+    """En modo 'Ventana Visible', evita que las ventanas del bot SBS se antepongan a las
+    ventanas con las que el usuario está trabajando en ese momento: las manda al fondo del
+    z-order de Windows sin robarles el foco (SWP_NOACTIVATE), en vez de abrirse por encima
+    de todo como hace Chrome por defecto al crear una ventana nueva."""
+    if sys.platform != 'win32':
+        return
+    try:
+        import ctypes
+
+        ps_cmd = (
+            "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" -ErrorAction SilentlyContinue | "
+            f"Where-Object {{ $_.CommandLine -like '*{MPFN_KILL_MARKER}*' }} | "
+            "Select-Object -ExpandProperty ProcessId"
+        )
+        result = subprocess.run(
+            ['powershell', '-NoProfile', '-NonInteractive', '-Command', ps_cmd],
+            timeout=6, capture_output=True, text=True
+        )
+        pids = {int(p) for p in result.stdout.split() if p.strip().isdigit()}
+        if not pids:
+            return
+
+        user32 = ctypes.windll.user32
+        HWND_BOTTOM = 1
+        SWP_NOMOVE = 0x0002
+        SWP_NOSIZE = 0x0001
+        SWP_NOACTIVATE = 0x0010
+
+        def _callback(hwnd, _lparam):
+            pid = ctypes.c_ulong()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if pid.value in pids and user32.IsWindowVisible(hwnd):
+                cls_buf = ctypes.create_unicode_buffer(64)
+                user32.GetClassNameW(hwnd, cls_buf, 64)
+                if cls_buf.value.startswith('Chrome_WidgetWin'):
+                    user32.SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+            return True
+
+        EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+        user32.EnumWindows(EnumWindowsProc(_callback), 0)
+    except Exception as e:
+        print(f"[SBSServiceManager] No se pudo reordenar ventanas Chromium al fondo: {e}")
 
 # Posición en mosaico dinámica según worker_id
 def get_window_position(worker_id):
@@ -121,6 +167,10 @@ class SBSWorkerThread(threading.Thread):
             self.is_ready = True
             modo = "segundo plano (silencioso)" if headless else "ventana visible en pantalla"
             print(f"[SBS Worker {self.worker_id}] Navegador Chromium listo en {modo}.")
+            if not headless:
+                # No robar el foco de la persona usuaria: la ventana queda visible pero
+                # detrás de las ventanas con las que ya estaba trabajando.
+                send_marked_windows_to_back()
         except Exception as e:
             print(f"[SBS Worker {self.worker_id}] Error al inicializar navegador: {e}")
             self.close_browser()
@@ -211,7 +261,7 @@ class SBSWorkerThread(threading.Thread):
         3. Tras concluir el tiempo de espera, abre una ventana completamente nueva y limpia
            con propiedades stealth para reanudar la consulta de forma exitosa.
         """
-        cooldown_sec = getattr(self.manager, 'block_cooldown', 45) if self.manager else 45
+        cooldown_sec = _resolve_seconds(getattr(self.manager, 'block_cooldown', "3-7")) if self.manager else _resolve_seconds("3-7")
         print(f"[SBS Worker {self.worker_id}] Reto de seguridad/Captcha detectado en DNI {dni}.")
         print(f"[SBS Worker {self.worker_id}] Cerrando ventana bloqueada e iniciando pausa de seguridad de {cooldown_sec} segundos...")
 
@@ -687,6 +737,39 @@ def _normalize_delay(value):
         return value
 
 
+def _resolve_seconds(value, default=5.0):
+    """Convierte un valor de configuración (número fijo o rango 'min-max') en segundos
+    concretos a esperar. Si es un rango, sortea un valor aleatorio dentro de él."""
+    if isinstance(value, str) and '-' in value:
+        lo_str, _, hi_str = value.partition('-')
+        try:
+            lo, hi = float(lo_str.strip()), float(hi_str.strip())
+            if hi < lo:
+                lo, hi = hi, lo
+            return random.uniform(lo, hi)
+        except ValueError:
+            return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _max_seconds(value, default=7.0):
+    """Extrae el límite superior de un valor de configuración (número o rango 'min-max'),
+    para cálculos de presupuesto/timeout que deben cubrir el peor caso."""
+    if isinstance(value, str) and '-' in value:
+        lo_str, _, hi_str = value.partition('-')
+        try:
+            return max(float(lo_str.strip()), float(hi_str.strip()))
+        except ValueError:
+            return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 class SBSServiceManager:
     _instance = None
     _lock = threading.RLock()
@@ -696,7 +779,7 @@ class SBSServiceManager:
         self.concurrency = 3
         self.headless = False  # Por defecto visible en pantalla para la secretaria
         self.delay_between = 2.0  # Pausa prudencial entre consultas consecutivas
-        self.block_cooldown = 5  # Tiempo de enfriamiento si la SBS detecta tráfico
+        self.block_cooldown = "3-7"  # Tiempo de enfriamiento si la SBS detecta tráfico (fijo o rango "min-max")
         self.max_retries = 25     # Reintentos continuos ante reto de captcha o latencia
         self.cooldown_until = 0   # Timestamp hasta cuando el sistema debe estar en pausa
         self.attempt_status = {}  # dni -> número de intento en curso (para el tag "Revisando #N")
@@ -717,7 +800,7 @@ class SBSServiceManager:
                     if 'delay_between' in cfg:
                         self.delay_between = _normalize_delay(cfg['delay_between'])
                     if 'block_cooldown' in cfg:
-                        self.block_cooldown = max(1, int(cfg['block_cooldown']))
+                        self.block_cooldown = _normalize_delay(cfg['block_cooldown'])
                     if 'max_retries' in cfg:
                         self.max_retries = max(1, min(50, int(cfg['max_retries'])))
             except Exception as e:
@@ -776,7 +859,7 @@ class SBSServiceManager:
             if delay_between is not None:
                 self.delay_between = _normalize_delay(delay_between)
             if block_cooldown is not None:
-                self.block_cooldown = max(1, int(block_cooldown))
+                self.block_cooldown = _normalize_delay(block_cooldown)
             if max_retries is not None:
                 self.max_retries = max(1, min(50, int(max_retries)))
 
@@ -796,7 +879,7 @@ class SBSServiceManager:
                 'concurrency': self.concurrency,
                 'headless': self.headless,
                 'delay_between': getattr(self, 'delay_between', 2.0),
-                'block_cooldown': getattr(self, 'block_cooldown', 5),
+                'block_cooldown': getattr(self, 'block_cooldown', "3-7"),
                 'max_retries': getattr(self, 'max_retries', 25)
             }
 
@@ -833,7 +916,7 @@ class SBSServiceManager:
         })
         # Debe cubrir el peor caso de la cadena completa de reintentos internos
         # (cada reintento implica una pausa de enfriamiento + reapertura de ventana + espera de respuesta)
-        per_retry_budget = int(getattr(self, 'block_cooldown', 5)) + 25
+        per_retry_budget = int(_max_seconds(getattr(self, 'block_cooldown', "3-7"))) + 25
         timeout_wait = max(120, (int(getattr(self, 'max_retries', 25)) + 1) * per_retry_budget)
         try:
             return res_queue.get(timeout=timeout_wait)

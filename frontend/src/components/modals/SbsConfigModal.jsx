@@ -7,7 +7,7 @@ export function SbsConfigModal({ isOpen, onClose, onConfigSaved }) {
   const [headless, setHeadless] = useState(false);
   const [delaySec, setDelaySec] = useState('2.0');
   const [maxRetries, setMaxRetries] = useState(25);
-  const [blockCooldownSec, setBlockCooldownSec] = useState(5);
+  const [blockCooldownSec, setBlockCooldownSec] = useState('3-7');
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   useEffect(() => {
@@ -18,7 +18,7 @@ export function SbsConfigModal({ isOpen, onClose, onConfigSaved }) {
           setHeadless(Boolean(cfg.headless));
           setDelaySec(cfg.delay_between !== undefined ? String(cfg.delay_between) : '2.0');
           setMaxRetries(cfg.max_retries || 25);
-          setBlockCooldownSec(cfg.block_cooldown !== undefined ? Number(cfg.block_cooldown) : 5);
+          setBlockCooldownSec(cfg.block_cooldown !== undefined ? String(cfg.block_cooldown) : '3-7');
         }
       }).catch(console.warn);
     }
@@ -34,7 +34,7 @@ export function SbsConfigModal({ isOpen, onClose, onConfigSaved }) {
         headless: Boolean(headless),
         delay_between: String(delaySec).trim(),
         max_retries: Number(maxRetries),
-        block_cooldown: Number(blockCooldownSec)
+        block_cooldown: String(blockCooldownSec).trim()
       });
       setSavedSuccess(true);
       onConfigSaved?.();
@@ -129,14 +129,16 @@ export function SbsConfigModal({ isOpen, onClose, onConfigSaved }) {
           <div className="form-group">
             <label>Tiempo de enfriamiento ante bloqueos (segundos):</label>
             <input
-              type="number"
-              min={1}
-              max={300}
+              type="text"
+              inputMode="decimal"
+              placeholder="Ej: 5  ó  3-7"
               value={blockCooldownSec}
               onChange={(e) => setBlockCooldownSec(e.target.value)}
               className="mpfn-input"
             />
-            <small className="form-hint">Tiempo mínimo: 1 segundo.</small>
+            <small className="form-hint">
+              Un número fijo ("5") o un rango ("3-7") para esperar un tiempo aleatorio entre ambos valores tras cada bloqueo. Por defecto: 3-7.
+            </small>
           </div>
 
           <div className="modal-footer">

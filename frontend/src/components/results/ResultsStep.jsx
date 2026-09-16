@@ -1,19 +1,18 @@
 import React from 'react';
-import { 
-  CheckCircle2, 
-  AlertTriangle, 
-  AlertOctagon, 
-  ShieldCheck, 
+import {
+  CheckCircle2,
+  AlertTriangle,
+  AlertOctagon,
+  ShieldCheck,
   UserPlus,
-  Users, 
-  FileSpreadsheet, 
-  FileText, 
+  Users,
   ArrowLeft,
   Filter,
   RotateCw,
   Download
 } from 'lucide-react';
 import { WorkersTable } from '../table/WorkersTable';
+import { ExportMenu } from '../common/ExportMenu';
 
 export function ResultsStep({
   workers,
@@ -49,8 +48,13 @@ export function ResultsStep({
     snpConfirmados = 0,
     sinAfiliacion = 0,
     pctIguales,
-    afpBreakdown
+    afpBreakdown,
+    pendientes = 0
   } = metrics;
+
+  // Solo tiene sentido volver al motor SBS si queda algo por consultar o hubo fallas que
+  // reintentar; si la ejecución terminó al 100% sin errores, no hay nada que hacer allí.
+  const canGoBackToSbs = pendientes > 0 || errores > 0;
 
   const resultCards = [
     {
@@ -63,7 +67,7 @@ export function ResultsStep({
     },
     {
       id: 'coincidente',
-      title: 'Validados (Iguales)',
+      title: 'Verificados',
       value: iguales,
       icon: CheckCircle2,
       badge: `${pctIguales}% Coincidencia`,
@@ -123,21 +127,35 @@ export function ResultsStep({
         </div>
 
         <div className="results-header-actions">
-          {statusFilter === 'latencia' && errores > 0 && onRetryFailed && (
-            <button 
-              className="mpfn-btn-warning" 
-              onClick={onRetryFailed}
-              disabled={isRetryingFailed}
-              title="Reintentar todas las consultas fallidas en SBS"
+          <div className="results-header-actions-row-top">
+            <button
+              className="mpfn-link-btn results-back-link"
+              onClick={onBackToVerification}
+              disabled={!canGoBackToSbs}
+              title={canGoBackToSbs
+                ? 'Volver a la verificación SBS para continuar o reintentar la verificación'
+                : 'La verificación ya se completó al 100% sin errores; no hay nada pendiente en el motor SBS'}
               type="button"
             >
-              <RotateCw size={15} className={isRetryingFailed ? 'animate-spin' : ''} />
-              <span>Reintentar fallidos ({errores})</span>
+              <ArrowLeft size={14} /> Volver a la verificación SBS
             </button>
-          )}
+          </div>
 
-          {/* Botón oficial de Reporte de Afiliación solo habilitado para Sin Afiliación */}
-          {statusFilter === 'sin_afiliacion' && (
+          <div className="results-header-actions-row-bottom">
+            {errores > 0 && onRetryFailed && (
+              <button 
+                className="mpfn-btn-warning" 
+                onClick={onRetryFailed}
+                disabled={isRetryingFailed}
+                title="Reintentar todas las consultas fallidas en SBS"
+                type="button"
+              >
+                <RotateCw size={15} className={isRetryingFailed ? 'animate-spin' : ''} />
+                <span>Reejecutar los fallidos ({errores})</span>
+              </button>
+            )}
+
+            {/* Botón oficial de Reporte de Afiliación siempre visible */}
             <button
               className="mpfn-btn-primary mpfn-btn-afiliacion-report"
               onClick={onExportAfiliacion}
@@ -145,31 +163,11 @@ export function ResultsStep({
               type="button"
             >
               <Download size={15} />
-              <span>Descargar Reporte Afiliación (.xls)</span>
+              <span>Descargar Reporte Afiliación ({sinAfiliacion})</span>
             </button>
-          )}
 
-          <button 
-            className="mpfn-btn-outline" 
-            onClick={onBackToVerification}
-            type="button"
-          >
-            <ArrowLeft size={15} /> Volver al Motor SBS
-          </button>
-          <button 
-            className="mpfn-btn-primary" 
-            onClick={() => onExport('xlsx')}
-            type="button"
-          >
-            <FileSpreadsheet size={15} /> Descargar Excel (.xlsx)
-          </button>
-          <button 
-            className="mpfn-btn-secondary" 
-            onClick={() => onExport('csv')}
-            type="button"
-          >
-            <FileText size={15} /> Exportar CSV
-          </button>
+            <ExportMenu onExport={onExport} label="Descargar Resultados" className="mpfn-btn-primary" />
+          </div>
         </div>
       </div>
 

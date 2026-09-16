@@ -138,7 +138,14 @@ def get_execution(execution_id):
 
 
 def merge_worker(execution_id, dni, partial_data):
-    """Actualiza (merge) los datos de un trabajador ya guardado, ej. tras una consulta SBS."""
+    """Actualiza (merge) los datos de un trabajador ya guardado, ej. tras una consulta SBS.
+
+    Usa UPDATE (no INSERT OR REPLACE) cuando la fila ya existe: REPLACE borra e inserta de
+    nuevo la fila, lo que le asigna un rowid mayor y la manda al final de "ORDER BY rowid" en
+    get_execution(). Eso hacía que, en una ejecución EN CURSO, los trabajadores ya verificados
+    se reordenaran al final de la lista en vez de mantener su posición original del padrón,
+    dando la falsa impresión de que "todos" seguían Sin verificar en las primeras páginas.
+    """
     with _lock:
         conn = _get_conn()
         row = conn.execute(
@@ -147,14 +154,20 @@ def merge_worker(execution_id, dni, partial_data):
         ).fetchone()
         if row:
             data = json.loads(row['data_json'])
+            data.update(partial_data)
+            sbs_consultado = 1 if data.get('sbs_consultado') else 0
+            conn.execute(
+                'UPDATE execution_workers SET data_json = ?, sbs_consultado = ? WHERE execution_id = ? AND dni = ?',
+                (json.dumps(data, ensure_ascii=False), sbs_consultado, execution_id, dni)
+            )
         else:
             data = {'dni': dni}
-        data.update(partial_data)
-        sbs_consultado = 1 if data.get('sbs_consultado') else 0
-        conn.execute(
-            'INSERT OR REPLACE INTO execution_workers (execution_id, dni, data_json, sbs_consultado) VALUES (?, ?, ?, ?)',
-            (execution_id, dni, json.dumps(data, ensure_ascii=False), sbs_consultado)
-        )
+            data.update(partial_data)
+            sbs_consultado = 1 if data.get('sbs_consultado') else 0
+            conn.execute(
+                'INSERT INTO execution_workers (execution_id, dni, data_json, sbs_consultado) VALUES (?, ?, ?, ?)',
+                (execution_id, dni, json.dumps(data, ensure_ascii=False), sbs_consultado)
+            )
         conn.execute('UPDATE executions SET fecha_actualizacion = ? WHERE id = ?', (_now(), execution_id))
         conn.commit()
 

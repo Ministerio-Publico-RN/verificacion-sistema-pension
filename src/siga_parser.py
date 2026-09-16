@@ -88,6 +88,35 @@ def parse_date_to_dmy(raw_val):
 AFP_CODE_MAP = {'02': 'PROFUTURO', '03': 'INTEGRA', '05': 'PRIMA', '06': 'HABITAT'}
 SNP_REGI_CODES = {'19990', 'E-19990'}
 EXONERADO_CODES = {'E-AFP', 'EXONERA', 'E-CM'}
+AFP_NAMES = ('HABITAT', 'INTEGRA', 'PRIMA', 'PROFUTURO')
+
+
+def split_regimen_previsional(previsiona_siga):
+    """
+    Separa el texto combinado de 'previsiona_siga' (que junta régimen previsional
+    y entidad previsional en un solo valor, ej. "SNP (ONP) - D.L. 19990" o "HABITAT")
+    en dos datos independientes para mostrarlos en columnas separadas:
+    Régimen (SPP / SNP / Régimen especial) y Previsional (AFP específica u ONP).
+    """
+    text = (previsiona_siga or '').strip()
+    upper = text.upper()
+
+    if not text or upper in ('-', 'SIN', 'SIN REGISTRO'):
+        return '', ''
+
+    exonerado = ' (Exonerado de aporte)' if 'EXONERA' in upper else ''
+
+    for afp in AFP_NAMES:
+        if afp in upper:
+            return f'SPP{exonerado}', afp
+
+    if 'ONP' in upper or 'SNP' in upper or '19990' in upper:
+        return f'SNP{exonerado}', 'ONP'
+
+    if '20530' in upper or 'ESPECIAL' in upper:
+        return 'RÉGIMEN ESPECIAL D.L. 20530', '-'
+
+    return text, '-'
 
 
 def resolve_previsiona_pea(regi_pens, codi_afps):
@@ -286,12 +315,46 @@ class SigaParser:
 
         fecha_nac = parse_date_to_dmy(nacim_raw)
 
-        # 4. Régimen previsional en SIGA
+        # 4. Régimen previsional y Previsiona en SIGA
+        # a) Régimen previsional tal cual en el archivo del usuario (para PEA es exactamente REGI_PENS_)
+        if is_pea_schema:
+            raw_regimen = clean_raw.get('REGI_PENS_') or clean_raw.get('REGI_PENS') or clean_raw.get('REGIPENS') or ''
+        else:
+            raw_regimen = (
+                clean_raw.get('REGI_PENS_') or 
+                clean_raw.get('REGI_PENS') or 
+                clean_raw.get('REGIPENS') or 
+                clean_raw.get('REGIMEN_PREVISIONAL') or 
+                clean_raw.get('REGIMEN_PENS') or 
+                clean_raw.get('REGIMEN_PENSIONARIO') or ''
+            )
+            if not raw_regimen and clean_raw.get('REGIMEN'):
+                reg_candidate = clean_raw.get('REGIMEN', '').strip()
+                if reg_candidate.upper() not in AFP_NAMES and reg_candidate.upper() not in ('02', '03', '05', '06', '2', '3', '5', '6'):
+                    raw_regimen = reg_candidate
+
+        regimen_siga = clean_mojibake(str(raw_regimen).strip()) if raw_regimen else ''
+        if regimen_siga == '5188':
+            regimen_siga = '05188'
+
+        # b) Previsiona tal cual en el archivo, con excepción de los códigos numéricos de AFP
+        codi_afp = clean_raw.get('CODI_AFPS_', '').strip()
+        raw_prev = clean_raw.get('PREVISIONA') or clean_raw.get('AFP') or clean_raw.get('SISTEMA_PENSION') or ''
+        target_prev = codi_afp if codi_afp else str(raw_prev).strip()
+        target_prev_norm = target_prev.zfill(2) if target_prev.isdigit() and len(target_prev) <= 2 else target_prev
+
+        if target_prev_norm in AFP_CODE_MAP:
+            previsional_siga = AFP_CODE_MAP[target_prev_norm]
+        elif target_prev in AFP_CODE_MAP:
+            previsional_siga = AFP_CODE_MAP[target_prev]
+        else:
+            previsional_siga = clean_mojibake(target_prev)
+
+        # c) previsiona_siga unificado para compatibilidad con validación de semáforos
         if is_pea_schema:
             previsiona_siga = resolve_previsiona_pea(clean_raw.get('REGI_PENS_', ''), clean_raw.get('CODI_AFPS_', ''))
         else:
-            previsiona_siga = clean_raw.get('PREVISIONA') or clean_raw.get('REGIMEN') or clean_raw.get('SISTEMA_PENSION') or clean_raw.get('AFP') or clean_raw.get('REGIMEN_PENSIONARIO') or ''
-            previsiona_siga = clean_mojibake(previsiona_siga)
+            previsiona_siga = previsional_siga or regimen_siga or clean_mojibake(str(raw_prev).strip())
         
         afiliacion_raw = (
             clean_raw.get('AFILIACION') or 
@@ -344,8 +407,11 @@ class SigaParser:
             'segundo_nombre': segundo_nombre,
             'fecha_nacimiento': fecha_nac,
             'previsiona_siga': previsiona_siga,
+            'regimen_siga': regimen_siga,
+            'previsional_siga': previsional_siga,
             'afiliacion_siga': afiliacion_siga,
             'cuspp_siga': cuspp_siga,
+            'regi_pens_codigo': ('05188' if (clean_raw.get('REGI_PENS_') or clean_raw.get('REGI_PENS') or '').strip().upper() == '5188' else (clean_raw.get('REGI_PENS_') or clean_raw.get('REGI_PENS') or '').strip().upper()) if is_pea_schema else '',
             'cargo': clean_raw.get('CARGO_DESC') or clean_raw.get('CARGO', ''),
             'monto_mensual': clean_raw.get('MONTO_MENS', ''),
             'regimen_laboral': clean_raw.get('DESC_REGL_', ''),

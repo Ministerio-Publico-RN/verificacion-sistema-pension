@@ -14,7 +14,8 @@ export function SbsPanel({
   totalWorkers,
   onGoToResults,
   onRetryFailed,
-  failedCount = 0
+  failedCount = 0,
+  pendingCount = 0
 }) {
   const isRunning = status === 'running';
   const isPaused = status === 'paused';
@@ -33,15 +34,34 @@ export function SbsPanel({
         </div>
 
         <div className="scraper-actions">
-          {!isRunning && !isPaused && !isStopped && !isCompleted && (
-            <button
-              className="mpfn-btn-primary"
-              disabled={totalWorkers === 0}
-              onClick={onStart}
-              type="button"
-            >
-              <Play size={15} /> Iniciar Verificación SBS
-            </button>
+          {!isRunning && !isPaused && (
+            <>
+              {/* Inicio inicial cuando no se ha consultado ninguno */}
+              {progress.current === 0 && (
+                <button
+                  className="mpfn-btn-primary"
+                  disabled={totalWorkers === 0}
+                  onClick={onStart}
+                  type="button"
+                >
+                  <Play size={15} /> Iniciar Verificación SBS
+                </button>
+              )}
+
+              {/* Si hay trabajadores pendientes (Sin verificar), mostrar Continuar verificación */}
+              {pendingCount > 0 && progress.current > 0 && onContinue && (
+                <button className="mpfn-btn-primary" onClick={onContinue} type="button">
+                  <PlayCircle size={15} /> Continuar verificación {pendingCount > 0 ? `(${pendingCount})` : ''}
+                </button>
+              )}
+
+              {/* Si se terminaron todos los pendientes o hay fallidos, mostrar botón de ejecutar fallidos */}
+              {failedCount > 0 && onRetryFailed && (
+                <button className="mpfn-btn-warning" onClick={onRetryFailed} type="button">
+                  <RotateCw size={14} /> Reejecutar los fallidos ({failedCount})
+                </button>
+              )}
+            </>
           )}
 
           {isRunning && (
@@ -59,18 +79,6 @@ export function SbsPanel({
           {(isRunning || isPaused) && (
             <button className="mpfn-btn-danger" onClick={onStop} type="button">
               <Square size={15} /> Detener
-            </button>
-          )}
-
-          {isStopped && onContinue && (
-            <button className="mpfn-btn-primary" onClick={onContinue} type="button">
-              <PlayCircle size={15} /> Continuar ejecución
-            </button>
-          )}
-
-          {isCompleted && failedCount > 0 && onRetryFailed && (
-            <button className="mpfn-btn-warning" onClick={onRetryFailed} type="button">
-              <RotateCw size={14} /> Ejecutar todos los fallidos ({failedCount})
             </button>
           )}
 

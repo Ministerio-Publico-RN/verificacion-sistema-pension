@@ -9,6 +9,22 @@ const CATEGORIES = [
   { code: 'CONTRATADOS', label: 'Contratados (728)' }
 ];
 
+const BLANK_KEY = '__blank__';
+
+const REGIME_OPTIONS = [
+  { code: '19990', label: '19990' },
+  { code: '20530', label: '20530' },
+  { code: '25897', label: '25897' },
+  { code: 'E-19990', label: 'E-19990' },
+  { code: 'E-AFP', label: 'E-AFP' },
+  { code: 'E-CM', label: 'E-CM' },
+  { code: 'EXONERA', label: 'EXONERA' },
+  { code: '05188', label: '05188' },
+  { code: BLANK_KEY, label: 'En blanco / Otro código' }
+];
+
+const ALL_REGIME_KEYS = REGIME_OPTIONS.map(r => r.code);
+
 function CategoryCard({ code, label, state, onFile }) {
   const inputRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -62,6 +78,19 @@ function CategoryCard({ code, label, state, onFile }) {
 
 export function PeaMultiUpload({ onContinue }) {
   const [files, setFiles] = useState({});
+  const [selectedRegimes, setSelectedRegimes] = useState(() => new Set(ALL_REGIME_KEYS));
+
+  const toggleRegime = (code) => {
+    setSelectedRegimes(prev => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  };
+
+  const selectAllRegimes = () => setSelectedRegimes(new Set(ALL_REGIME_KEYS));
+  const selectNoneRegimes = () => setSelectedRegimes(new Set());
 
   const handleFile = async (code, file) => {
     setFiles(prev => ({ ...prev, [code]: { status: 'loading' } }));
@@ -82,14 +111,24 @@ export function PeaMultiUpload({ onContinue }) {
 
   const loadedCategories = CATEGORIES.filter(c => files[c.code]?.status === 'loaded');
   const missingCategories = CATEGORIES.filter(c => files[c.code]?.status !== 'loaded');
-  const canContinue = loadedCategories.length > 0;
+  const canContinue = loadedCategories.length > 0 && selectedRegimes.size > 0;
+
+  const filterByRegime = (workers) => workers.filter(w => {
+    const code = (w.regi_pens_codigo || '').trim().toUpperCase();
+    return code ? selectedRegimes.has(code) : selectedRegimes.has(BLANK_KEY);
+  });
+
+  const filteredTotal = loadedCategories.reduce(
+    (sum, c) => sum + filterByRegime(files[c.code].workers).length,
+    0
+  );
 
   const handleContinue = () => {
-    const combined = loadedCategories.flatMap(c => files[c.code].workers);
+    const combined = filterByRegime(loadedCategories.flatMap(c => files[c.code].workers));
     const archivos = loadedCategories.map(c => ({
       origen: c.code,
       filename: files[c.code].fileName,
-      total: files[c.code].total
+      total: filterByRegime(files[c.code].workers).length
     }));
     onContinue(combined, archivos);
   };
@@ -111,6 +150,34 @@ export function PeaMultiUpload({ onContinue }) {
         ))}
       </div>
 
+      <div className="mpfn-pea-regime-filter">
+        <div className="mpfn-pea-regime-filter-header">
+          <h4>Regímenes previsionales a considerar (REGI_PENS_)</h4>
+          <div className="mpfn-pea-regime-filter-actions">
+            <button type="button" className="mpfn-link-btn" onClick={selectAllRegimes}>Todos</button>
+            <button type="button" className="mpfn-link-btn" onClick={selectNoneRegimes}>Ninguno</button>
+          </div>
+        </div>
+        <p className="text-muted text-sm">
+          Marque los regímenes previsionales que desea verificar. Los no seleccionados serán omitidos.
+        </p>
+        <div className="mpfn-pea-regime-grid">
+          {REGIME_OPTIONS.map(({ code, label }) => (
+            <label key={code} className="col-checkbox-label">
+              <input
+                type="checkbox"
+                checked={selectedRegimes.has(code)}
+                onChange={() => toggleRegime(code)}
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+        {selectedRegimes.size === 0 && (
+          <p className="mpfn-alert-error">Seleccione al menos un régimen para poder continuar.</p>
+        )}
+      </div>
+
       <div className="mpfn-pea-upload-footer">
         {missingCategories.length > 0 && (
           <span className="text-muted text-sm">
@@ -123,7 +190,7 @@ export function PeaMultiUpload({ onContinue }) {
           onClick={handleContinue}
           type="button"
         >
-          Continuar ({loadedCategories.reduce((sum, c) => sum + files[c.code].total, 0)} registros) <ArrowRight size={15} />
+          Continuar ({filteredTotal} registros) <ArrowRight size={15} />
         </button>
       </div>
     </div>

@@ -1,11 +1,13 @@
 import React from 'react';
 import { X, User, Landmark, Building, CheckCircle2, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { splitRegimenPrevisional } from '../../hooks/useWorkers';
 
 export function WorkerDetailModal({ worker, onClose }) {
   if (!worker) return null;
 
   const sbs = worker.sbs_resultado;
   const afpnet = worker.afpnet_resultado;
+  const { regimen, previsional } = splitRegimenPrevisional(worker);
 
   return (
     <div className="mpfn-modal-backdrop" onClick={onClose}>
@@ -31,7 +33,8 @@ export function WorkerDetailModal({ worker, onClose }) {
           <div className="detail-card">
             <h4><Landmark size={15} /> Información SIGA (Institucional)</h4>
             <div className="detail-rows">
-              <div><strong>Régimen:</strong> {worker.previsiona_siga || 'No especificado'}</div>
+              <div><strong>Régimen:</strong> {regimen || 'No especificado'}</div>
+              <div><strong>Previsional:</strong> {previsional || 'No especificado'}</div>
               <div><strong>Fecha Afiliación:</strong> <span className="font-mono">{worker.afiliacion_siga || worker.fecha_afiliacion_siga || worker.fecha_afiliacion || '-'}</span></div>
               <div><strong>CUSPP:</strong> <span className="font-mono">{worker.cuspp_siga || worker.cuspp || 'Sin CUSPP'}</span></div>
               <div><strong>Fecha Nacimiento:</strong> {worker.fecha_nacimiento || '-'}</div>

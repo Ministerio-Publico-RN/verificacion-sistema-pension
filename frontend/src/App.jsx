@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Header } from './components/layout/Header';
 import { WorkflowStepper } from './components/layout/WorkflowStepper';
 import { FileDropzone } from './components/uploader/FileDropzone';
@@ -33,7 +33,8 @@ export function App() {
   const [visibleColumns, setVisibleColumns] = useState({
     num: true,
     worker: true,
-    siga: true,
+    regimen: true,
+    previsional: true,
     afiliacion: true,
     cuspp: true,
     sbs: true,
@@ -116,6 +117,22 @@ export function App() {
     setCurrentStep(1);
   };
 
+  const handleGoHome = useCallback(() => {
+    if (workers.length > 0) {
+      const confirmed = window.confirm(
+        '¿Seguro que desea volver al inicio? Se saldrá de esta ejecución (su avance queda guardado en el Historial de Ejecuciones).'
+      );
+      if (!confirmed) return;
+    }
+    if (sbs.status === 'running' || sbs.status === 'paused') {
+      sbs.stopScraping();
+    }
+    clearWorkers();
+    setExecutionId(null);
+    setMode(null);
+    setCurrentStep(1);
+  }, [workers.length, sbs, clearWorkers]);
+
   const hydrateExecution = useCallback(async (execution) => {
     const full = await getExecution(execution.id);
     const name = (full.archivos || []).map(a => a.filename).filter(Boolean).join(' + ') || `Ejecución #${full.id}`;
@@ -124,8 +141,8 @@ export function App() {
     setMode(full.tipo);
     setExecutionId(full.id);
     setIsHistoryOpen(false);
-    const isCompleted = full.estado === 'completado';
     const pendientes = loadedWorkers.filter(w => evaluateWorkerSemaforo(w).tone === 'sin_verificar').length;
+    const isCompleted = full.estado === 'completado' && pendientes === 0;
     const elapsedSeconds = (full.fecha_inicio && full.fecha_actualizacion)
       ? Math.max(0, Math.round((new Date(full.fecha_actualizacion) - new Date(full.fecha_inicio)) / 1000))
       : 0;
@@ -216,12 +233,46 @@ export function App() {
     });
   }, [workers, sbs, executionId]);
 
-  // Al finalizar la verificación SBS, avanzar automáticamente a Resultados y Reporte
+  const handleBackToVerification = useCallback(() => {
+    setStatusFilter('all');
+    setSearchQuery('');
+    setCurrentPage(1);
+    setCurrentStep(2);
+  }, [setStatusFilter, setSearchQuery, setCurrentPage, setCurrentStep]);
+
+  // Al finalizar la verificación SBS, avanzar automáticamente a Resultados y Reporte, pero
+  // solo una vez por cada finalización y si ya no quedan trabajadores pendientes por consultar.
+  const autoAdvancedRef = useRef(false);
   useEffect(() => {
-    if (sbs.status === 'completed' && currentStep === 2) {
-      setCurrentStep(3);
+    if (sbs.status === 'completed') {
+      const hasPending = workers.some(w => !w.semaforo || w.semaforo === 'sin_verificar');
+      if (!autoAdvancedRef.current && !hasPending) {
+        autoAdvancedRef.current = true;
+        setCurrentStep(3);
+      }
+    } else {
+      autoAdvancedRef.current = false;
     }
-  }, [sbs.status, currentStep]);
+  }, [sbs.status, workers]);
+
+  // Mientras haya una ejecución activa (modo elegido), recargar o cerrar la pestaña pide
+  // confirmación para no perder el avance por accidente. Si además hay una verificación SBS
+  // en curso, se cierran también las ventanas del navegador que hubiera abiertas.
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (sbs.status === 'running' || sbs.status === 'paused') {
+        try {
+          navigator.sendBeacon('/api/sbs/stop', new Blob());
+        } catch (_) {}
+      }
+      if (mode) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [sbs.status, mode]);
 
   const historyPanel = (
     <HistoryPanel
@@ -246,7 +297,7 @@ export function App() {
 
   return (
     <div className="mpfn-app">
-      <Header onOpenHistory={() => setIsHistoryOpen(true)} />
+      <Header onOpenHistory={() => setIsHistoryOpen(true)} onGoHome={handleGoHome} />
 
       <main className="mpfn-container">
         {/* Stepper del MPFN Design System */}
@@ -308,6 +359,7 @@ export function App() {
               onGoToResults={() => setCurrentStep(3)}
               onRetryFailed={handleRetryFailed}
               failedCount={metrics.errores}
+              pendingCount={metrics.pendientes}
             />
 
             <div className="step-action-bar">
@@ -368,7 +420,7 @@ export function App() {
               onExportAfiliacion={handleExportAfiliacion}
               visibleColumns={visibleColumns}
               onToggleColumn={toggleColumn}
-              onBackToVerification={() => setCurrentStep(2)}
+              onBackToVerification={handleBackToVerification}
               onRetryWorker={handleRetryWorker}
               onRetryFailed={handleRetryFailed}
               isRetryingFailed={sbs.status === 'running'}

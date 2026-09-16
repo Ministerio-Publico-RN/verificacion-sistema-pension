@@ -1,5 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Download, FileText, Columns3, Check, RotateCw } from 'lucide-react';
+import { Search, Download, Columns3, Check, RotateCw } from 'lucide-react';
+import { ExportMenu } from '../common/ExportMenu';
+
+const RESULT_FILTER_VALUES = ['all', 'coincidente', 'discrepancia', 'latencia', 'snp', 'sin_afiliacion'];
+const PADRON_FILTER_VALUES = ['filter_snp', 'filter_integra', 'filter_prima', 'filter_profuturo', 'filter_habitat', 'filter_blanco'];
 
 export function TableControls({
   searchQuery,
@@ -22,9 +26,10 @@ export function TableControls({
   const columnOptions = [
     { key: 'num', label: 'N°' },
     { key: 'worker', label: 'Trabajador / DNI' },
-    { key: 'siga', label: 'Régimen SIGA' },
+    { key: 'regimen', label: 'Regimen previsional' },
+    { key: 'previsional', label: 'Previsiona' },
     { key: 'afiliacion', label: 'Fecha Afiliación SIGA' },
-    { key: 'cuspp', label: 'CUSPP' },
+    { key: 'cuspp', label: 'CUSPP SIGA' },
     { key: 'sbs', label: 'Consulta SBS' },
     { key: 'semaforo', label: 'Semáforo de Validación' },
     { key: 'afpnet', label: 'Consulta AFPNet' },
@@ -68,16 +73,26 @@ export function TableControls({
 
       <div className="mpfn-toolbar-actions">
         <select
-          value={statusFilter}
+          value={RESULT_FILTER_VALUES.includes(statusFilter) ? statusFilter : 'all'}
           onChange={(e) => onStatusChange(e.target.value)}
           className="mpfn-select"
+          title="Filtrar por resultado de la verificación"
         >
           <option value="all">Todos los registros ({totalCount})</option>
-          <option value="coincidente">Validados (Iguales)</option>
+          <option value="coincidente">Verificados</option>
           <option value="discrepancia">Observados</option>
           <option value="latencia">Fallaron al Consultar</option>
           <option value="snp">Inscritos en SNP (ONP)</option>
           <option value="sin_afiliacion">Nuevos sin Afiliación</option>
+        </select>
+
+        <select
+          value={PADRON_FILTER_VALUES.includes(statusFilter) ? statusFilter : 'all'}
+          onChange={(e) => onStatusChange(e.target.value)}
+          className="mpfn-select"
+          title="Filtrar por composición del padrón SIGA"
+        >
+          <option value="all">Todos los padrones</option>
           <option value="filter_snp">Padrón: SNP (ONP)</option>
           <option value="filter_integra">Padrón: AFP Integra</option>
           <option value="filter_prima">Padrón: AFP Prima</option>
@@ -96,18 +111,6 @@ export function TableControls({
           >
             <RotateCw size={14} className={isRetryingFailed ? 'animate-spin' : ''} />
             <span>Reintentar fallidos ({failedCount})</span>
-          </button>
-        )}
-
-        {statusFilter === 'sin_afiliacion' && onExportAfiliacion && (
-          <button
-            type="button"
-            className="mpfn-btn-primary mpfn-btn-afiliacion-report"
-            onClick={onExportAfiliacion}
-            title="Descargar reporte de afiliación oficial para trabajadores sin afiliación previa"
-          >
-            <Download size={14} />
-            <span>Reporte Afiliación (.xls)</span>
           </button>
         )}
 
@@ -139,24 +142,7 @@ export function TableControls({
           )}
         </div>
 
-        <div className="mpfn-export-group">
-          <button
-            className="mpfn-btn-outline"
-            onClick={() => onExport('xlsx')}
-            title="Exportar columnas visibles a Excel"
-            type="button"
-          >
-            <Download size={14} /> Excel
-          </button>
-          <button
-            className="mpfn-btn-outline"
-            onClick={() => onExport('csv')}
-            title="Exportar columnas visibles a CSV"
-            type="button"
-          >
-            <FileText size={14} /> CSV
-          </button>
-        </div>
+        <ExportMenu onExport={onExport} label="Exportar" />
       </div>
     </div>
   );

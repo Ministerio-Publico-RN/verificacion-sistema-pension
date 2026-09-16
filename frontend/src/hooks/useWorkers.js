@@ -18,6 +18,87 @@ function normalizeCuspp(c) {
   return (c || '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
 }
 
+const AFP_NAMES = ['INTEGRA', 'PRIMA', 'PROFUTURO', 'HABITAT'];
+
+/**
+ * Deriva Régimen (SPP/SNP/Especial) y Previsional (AFP específica u ONP) a partir
+ * de los campos del padrón SIGA, para mostrarlos en columnas separadas sin mezclarlos.
+ * Usa regimen_siga/previsional_siga si el backend ya los envía; si no, los calcula
+ * a partir del campo combinado previsiona_siga (compatibilidad con datos antiguos).
+ */
+export function splitRegimenPrevisional(w) {
+  const peaRegime = w.regi_pens_codigo || w.raw_data?.REGI_PENS_ || w.raw_data?.REGI_PENS || w.raw_data?.REGIPENS;
+  if (peaRegime) {
+    return {
+      regimen: peaRegime,
+      previsional: w.previsional_siga || (w.previsiona_siga && !['19990', '20530', '25897', 'E-19990', 'E-AFP', 'E-CM', 'EXONERA', '05188'].includes(w.previsiona_siga) ? w.previsiona_siga : '')
+    };
+  }
+
+  if (w.regimen_siga !== undefined || w.previsional_siga !== undefined) {
+    return { regimen: w.regimen_siga || '', previsional: w.previsional_siga || '' };
+  }
+
+  const text = (w.previsiona_siga || '').trim();
+  const upper = text.toUpperCase();
+
+  if (!text || upper === '-' || upper.includes('SIN REGISTRO')) {
+    return { regimen: '', previsional: '' };
+  }
+
+  const exonerado = upper.includes('EXONERA') ? ' (Exonerado de aporte)' : '';
+
+  for (const afp of AFP_NAMES) {
+    if (upper.includes(afp)) {
+      return { regimen: `SPP${exonerado}`, previsional: afp };
+    }
+  }
+
+  if (upper.includes('ONP') || upper.includes('SNP') || upper.includes('19990')) {
+    return { regimen: `SNP${exonerado}`, previsional: 'ONP' };
+  }
+
+  if (upper.includes('20530') || upper.includes('ESPECIAL')) {
+    return { regimen: 'RÉGIMEN ESPECIAL D.L. 20530', previsional: '-' };
+  }
+
+  return { regimen: text, previsional: '-' };
+}
+
+/**
+ * Compara, campo por campo, lo declarado en SIGA contra lo hallado en SBS/AFPNet,
+ * para pintar cada dato de la columna "Consulta SBS" con su propio ícono de coincidencia.
+ */
+export function compareWorkerFields(w) {
+  const sbs = w.sbs_resultado;
+  if (!sbs) return null;
+
+  const afpnet = w.afpnet_resultado;
+  const { previsional } = splitRegimenPrevisional(w);
+  const previsionalUpper = (previsional || '').toUpperCase();
+  const sbsAfp = (sbs.afp || '').toUpperCase();
+
+  let previsionalMatch;
+  const targetCheck = (previsionalUpper || w.previsiona_siga || w.regimen_siga || '').toUpperCase();
+  if (AFP_NAMES.some(a => targetCheck.includes(a))) {
+    previsionalMatch = AFP_NAMES.some(a => targetCheck.includes(a) && sbsAfp.includes(a));
+  } else if (targetCheck.includes('ONP') || targetCheck.includes('SNP') || targetCheck.includes('19990') || targetCheck.includes('20530')) {
+    previsionalMatch = !sbsAfp || sbsAfp.includes('NO REGISTRADO');
+  } else {
+    previsionalMatch = false;
+  }
+
+  const cusppSiga = normalizeCuspp(w.cuspp_siga);
+  const cusppOficial = normalizeCuspp(sbs.cuspp || afpnet?.cuspp);
+  const cusppMatch = !!(cusppSiga && cusppSiga.length >= 6 && cusppOficial && cusppOficial.length >= 6 && cusppSiga === cusppOficial);
+
+  const dateSiga = normalizeDate(w.afiliacion_siga);
+  const dateSbs = normalizeDate(sbs.fecha_afiliacion);
+  const fechaMatch = !!(dateSiga && dateSbs && dateSbs !== '-' && dateSiga === dateSbs);
+
+  return { previsionalMatch, cusppMatch, fechaMatch };
+}
+
 export function evaluateWorkerSemaforo(w) {
   const siga = (w.previsiona_siga || '').toUpperCase();
   const sbs = w.sbs_resultado;

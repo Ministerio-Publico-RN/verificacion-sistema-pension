@@ -243,6 +243,12 @@ export function useSbsStream({ onWorkerUpdate, onLog }) {
       if (executionId) {
         try { await updateExecutionStatus(executionId, 'completado'); } catch (_) {}
       }
+      // Cerrar automáticamente todas las ventanas del navegador abiertas para la verificación,
+      // en vez de dejarlas abiertas tras terminar al 100%.
+      try {
+        await stopSBS();
+        appendLog('Ventanas del navegador SBS cerradas automáticamente.', 'info');
+      } catch (_) {}
     }
   }, [appendLog, onWorkerUpdate]);
 

@@ -4,6 +4,11 @@ import { TableControls } from './TableControls';
 import { Pagination } from './Pagination';
 import { Inbox } from 'lucide-react';
 
+// Etiqueta que marca las columnas cuyo valor proviene del archivo SIGA subido por el usuario
+function SigaTag() {
+  return <span className="col-siga-tag">SIGA</span>;
+}
+
 export function WorkersTable({
   workers,
   paginatedWorkers,
@@ -56,16 +61,17 @@ export function WorkersTable({
           <thead>
             <tr>
               {visibleColumns.num !== false && <th className="col-num">#</th>}
-              {visibleColumns.worker !== false && <th className="col-worker">Trabajador / DNI</th>}
-              {visibleColumns.siga !== false && <th className="col-siga">Régimen SIGA</th>}
-              {visibleColumns.afiliacion !== false && <th className="col-afiliacion">Fecha Afiliación</th>}
-              {visibleColumns.cuspp !== false && <th className="col-cuspp">CUSPP</th>}
+              {visibleColumns.worker !== false && <th className="col-worker">Trabajador / DNI <SigaTag /></th>}
+              {visibleColumns.regimen !== false && <th className="col-regimen">Regimen previsional <SigaTag /></th>}
+              {visibleColumns.previsional !== false && <th className="col-previsional">Previsiona <SigaTag /></th>}
+              {visibleColumns.afiliacion !== false && <th className="col-afiliacion">Fecha Afiliación <SigaTag /></th>}
+              {visibleColumns.cuspp !== false && <th className="col-cuspp">CUSPP <SigaTag /></th>}
               {visibleColumns.sbs !== false && <th className="col-sbs">Consulta SBS</th>}
               {visibleColumns.semaforo !== false && <th className="col-semaforo">Semáforo de Validación</th>}
               {visibleColumns.afpnet === true && <th className="col-afpnet">Consulta AFPNet</th>}
-              {visibleColumns.nacim === true && <th className="col-nacim">Fecha Nacimiento</th>}
-              {visibleColumns.cargo === true && <th className="col-cargo">Cargo</th>}
-              {visibleColumns.origen === true && <th className="col-origen">Origen</th>}
+              {visibleColumns.nacim === true && <th className="col-nacim">Fecha Nacimiento <SigaTag /></th>}
+              {visibleColumns.cargo === true && <th className="col-cargo">Cargo <SigaTag /></th>}
+              {visibleColumns.origen === true && <th className="col-origen">Origen <SigaTag /></th>}
               <th className="col-actions">Acción</th>
             </tr>
           </thead>

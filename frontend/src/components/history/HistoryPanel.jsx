@@ -73,12 +73,13 @@ export function HistoryPanel({ isOpen, onClose, onOpenExecution }) {
 
           {!isLoading && executions.map((ex) => {
             const pct = ex.total > 0 ? Math.round((ex.consultados / ex.total) * 100) : 0;
+            const isCompletado = ex.total > 0 && ex.consultados >= ex.total;
             return (
               <div key={ex.id} className="mpfn-history-row">
                 <div className="mpfn-history-row-info">
                   <div className="mpfn-history-row-top">
-                    <span className={`mpfn-history-badge ${ex.estado === 'en_curso' ? 'is-en-curso' : 'is-completado'}`}>
-                      {ex.estado === 'en_curso' ? 'En curso' : 'Completado'}
+                    <span className={`mpfn-history-badge ${isCompletado ? 'is-completado' : 'is-en-curso'}`}>
+                      {isCompletado ? 'Completado' : 'En curso'}
                     </span>
                     <span className="mpfn-history-tipo">{TIPO_LABEL[ex.tipo] || ex.tipo}</span>
                   </div>
@@ -92,7 +93,7 @@ export function HistoryPanel({ isOpen, onClose, onOpenExecution }) {
                     onClick={() => onOpenExecution(ex)}
                     type="button"
                   >
-                    {ex.estado === 'en_curso' ? <><PlayCircle size={14} /> Continuar</> : <><Eye size={14} /> Ver</>}
+                    {!isCompletado ? <><PlayCircle size={14} /> Continuar</> : <><Eye size={14} /> Ver</>}
                   </button>
                   <button
                     className="mpfn-btn-icon-subtle"
