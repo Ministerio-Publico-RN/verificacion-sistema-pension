@@ -9,7 +9,8 @@ import {
   ArrowLeft,
   Filter,
   RotateCw,
-  Download
+  Download,
+  FileText
 } from 'lucide-react';
 import { WorkersTable } from '../table/WorkersTable';
 import { ExportMenu } from '../common/ExportMenu';
@@ -32,6 +33,9 @@ export function ResultsStep({
   onSelectWorker,
   onExport,
   onExportAfiliacion,
+  onExportCierreAltas,
+  isExportingCierreAltas = false,
+  cierreAltasProgress = '',
   visibleColumns,
   onToggleColumn,
   onBackToVerification,
@@ -165,6 +169,28 @@ export function ResultsStep({
               <Download size={15} />
               <span>Descargar Reporte Afiliación ({sinAfiliacion})</span>
             </button>
+
+            {/* Botón Reporte Cierre de Altas (Word con Ficha SBS) */}
+            {onExportCierreAltas && (
+              <button
+                className="mpfn-btn-primary mpfn-btn-cierre-altas"
+                onClick={onExportCierreAltas}
+                disabled={isExportingCierreAltas}
+                title="Descargar documento Word de Cierre de Altas con Nombre, DNI y foto de su ficha SBS"
+                type="button"
+                style={{
+                  backgroundColor: '#2b579a',
+                  borderColor: '#2b579a'
+                }}
+              >
+                <FileText size={15} />
+                <span>
+                  {isExportingCierreAltas
+                    ? `Generando Word (${cierreAltasProgress})...`
+                    : 'Reporte Cierre de Altas'}
+                </span>
+              </button>
+            )}
 
             <ExportMenu onExport={onExport} label="Descargar Resultados" className="mpfn-btn-primary" />
           </div>

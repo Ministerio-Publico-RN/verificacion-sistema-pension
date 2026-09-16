@@ -14,6 +14,7 @@ import { LogConsole } from './components/layout/LogConsole';
 import { useWorkers, evaluateWorkerSemaforo } from './hooks/useWorkers';
 import { useSbsStream } from './hooks/useSbsStream';
 import { exportVisibleReport, exportAfiliacionReport } from './api/exportApi';
+import { exportCierreAltasWord } from './api/wordExportApi';
 import { verifyWorkerSBS } from './api/sbsApi';
 import { createExecution, getExecution, updateExecutionStatus } from './api/sigaApi';
 import { ArrowRight } from 'lucide-react';
@@ -24,6 +25,8 @@ export function App() {
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [selectedWorker, setSelectedWorker] = useState(null);
+  const [isExportingCierreAltas, setIsExportingCierreAltas] = useState(false);
+  const [cierreAltasProgress, setCierreAltasProgress] = useState('');
 
   // Modo de verificación elegido en la pantalla inicial: null | 'altas' | 'pea'
   const [mode, setMode] = useState(null);
@@ -179,6 +182,46 @@ export function App() {
       type: 'success'
     });
   }, [workers, addLog]);
+
+  const handleExportCierreAltas = useCallback(async () => {
+    const targetWorkers = filteredWorkers.length > 0 ? filteredWorkers : workers;
+    if (targetWorkers.length === 0) {
+      alert('No hay trabajadores para generar el reporte de Cierre de Altas.');
+      return;
+    }
+    setIsExportingCierreAltas(true);
+    setCierreAltasProgress(`0/${targetWorkers.length}`);
+    addLog({
+      id: Date.now(),
+      time: new Date().toLocaleTimeString('es-PE', { hour12: false }),
+      message: `Iniciando generación de Reporte Cierre de Altas en Word para ${targetWorkers.length} trabajadores...`,
+      type: 'info'
+    });
+
+    try {
+      await exportCierreAltasWord(targetWorkers, (current, total) => {
+        setCierreAltasProgress(`${current}/${total}`);
+      });
+      addLog({
+        id: Date.now(),
+        time: new Date().toLocaleTimeString('es-PE', { hour12: false }),
+        message: `Reporte Cierre de Altas en Word descargado exitosamente para ${targetWorkers.length} trabajadores.`,
+        type: 'success'
+      });
+    } catch (err) {
+      console.error('Error al generar Reporte Cierre de Altas:', err);
+      addLog({
+        id: Date.now(),
+        time: new Date().toLocaleTimeString('es-PE', { hour12: false }),
+        message: `Error al generar Reporte Cierre de Altas: ${err.message}`,
+        type: 'error'
+      });
+      alert(`Hubo un error al generar el documento de Word: ${err.message}`);
+    } finally {
+      setIsExportingCierreAltas(false);
+      setCierreAltasProgress('');
+    }
+  }, [filteredWorkers, workers, addLog]);
 
   const handleRetryWorker = useCallback(async (worker) => {
     const nombre = worker.apellidos_nombres || worker.nombre_completo || worker.dni;
@@ -421,6 +464,9 @@ export function App() {
               onSelectWorker={setSelectedWorker}
               onExport={handleExport}
               onExportAfiliacion={handleExportAfiliacion}
+              onExportCierreAltas={handleExportCierreAltas}
+              isExportingCierreAltas={isExportingCierreAltas}
+              cierreAltasProgress={cierreAltasProgress}
               visibleColumns={visibleColumns}
               onToggleColumn={toggleColumn}
               onBackToVerification={handleBackToVerification}

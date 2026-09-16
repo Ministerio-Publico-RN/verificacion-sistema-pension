@@ -143,7 +143,7 @@ export function exportAfiliacionReport(workers = []) {
     <Cell><Data ss:Type="String">20131370301</Data></Cell>
     <Cell><Data ss:Type="String">MINISTERIO PUBLICO-GERENCIA GENERAL</Data></Cell>
     <Cell><Data ss:Type="String"></Data></Cell>
-    <Cell><Data ss:Type="String">1</Data></Cell>
+    <Cell><Data ss:Type="String">0</Data></Cell>
    </Row>`;
   }).join('\n');
 
@@ -185,8 +185,8 @@ ${rowsXml}
   downloadBlob(xmlContent, `reporte_afiliacion_${timestamp}.xls`, 'application/vnd.ms-excel;charset=utf-8;');
 }
 
-function downloadBlob(content, filename, mimeType) {
-  const blob = new Blob([content], { type: mimeType });
+export function downloadBlob(content, filename, mimeType) {
+  const blob = content instanceof Blob ? content : new Blob([content], { type: mimeType });
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
