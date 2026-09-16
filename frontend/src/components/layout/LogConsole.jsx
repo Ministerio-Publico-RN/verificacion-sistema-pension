@@ -28,6 +28,7 @@ export function LogConsole({ logs, onClear }) {
           <button className="console-btn-toggle" onClick={() => setIsExpanded(prev => !prev)} type="button">
             {isExpanded ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
           </button>
+          <span className="console-hco-tag">SISTEMAS HCO</span>
         </div>
       </div>
 

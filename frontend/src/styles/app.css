@@ -87,6 +87,21 @@ body {
   color: #ffffff;
 }
 
+.mpfn-hco-tag {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(212, 175, 55, 0.16);
+  color: var(--mpfn-gold-light, #f3e5ab);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.2;
+}
+
 .mpfn-header-actions {
   display: flex;
   align-items: center;
@@ -1286,6 +1301,22 @@ body {
 
 .console-btn-clear:hover, .console-btn-toggle:hover {
   color: #ffffff;
+}
+
+.console-hco-tag {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--mpfn-gold-light, #f3e5ab);
+  background: rgba(212, 175, 55, 0.12);
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  padding: 2px 7px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  user-select: none;
+  margin-left: 0.25rem;
+  display: inline-flex;
+  align-items: center;
 }
 
 .console-body {

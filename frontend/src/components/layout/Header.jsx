@@ -19,7 +19,10 @@ export function Header({ onOpenHistory, onGoHome }) {
         <img src={insigniaImg} alt="Escudo MPFN" className="mpfn-insignia" />
         <div className="mpfn-title-group">
           <span className="mpfn-subtext">MINISTERIO PÚBLICO – FISCALÍA DE LA NACIÓN</span>
-          <h1 className="mpfn-maintitle">Verificación del Sistema Previsional</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <h1 className="mpfn-maintitle" style={{ margin: 0 }}>Verificación del Sistema Previsional</h1>
+            <span className="mpfn-hco-tag">SISTEMAS HCO</span>
+          </div>
         </div>
       </div>
 
