@@ -14,6 +14,7 @@ import threading
 import subprocess
 import json
 import random
+from datetime import datetime
 
 
 from playwright.sync_api import sync_playwright
@@ -550,6 +551,8 @@ class SBSWorkerThread(threading.Thread):
                     afp_detectada = afp_name
                     break
 
+            now_str = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+
             if afp_detectada:
                 # Extraer CUSPP
                 m_cuspp = re.search(r'[0-9]{6}[A-Z0-9]{6}', body_text)
@@ -563,12 +566,22 @@ class SBSWorkerThread(threading.Thread):
                 m_sit = re.search(r'situaci[oó]n actual es[\s\|:]*([A-Za-z]+)', body_text, re.IGNORECASE)
                 situacion = m_sit.group(1) if m_sit else 'AFILIADO'
 
+                # Extraer fecha de consulta reportada por SBS si aparece en el texto
+                m_fechareg = re.search(r'Informaci[oó]n al\s*:\s*(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})', body_text, re.IGNORECASE)
+                fecha_consulta_sbs = m_fechareg.group(1) if m_fechareg else now_str
+
+                # Extraer fecha de devengue si está presente
+                m_dev = re.search(r'fecha de devengue[^\n:]*:\s*([^\n\r]+)', body_text, re.IGNORECASE)
+                fecha_dev = m_dev.group(1).strip() if m_dev else 'No hay datos'
+
                 return {
                     'afiliado_spp': True,
                     'afp': afp_detectada,
                     'cuspp': cuspp,
                     'fecha_afiliacion': fecha_afil,
                     'situacion': situacion,
+                    'fecha_devengue': fecha_dev,
+                    'fecha_consulta': fecha_consulta_sbs,
                     'estado_sbs': 'ENCONTRADO',
                     'mensaje': f'Afiliado a {afp_detectada} desde {fecha_afil}',
                     'tiempo_seg': elapsed,
@@ -583,6 +596,8 @@ class SBSWorkerThread(threading.Thread):
                     'cuspp': '-',
                     'fecha_afiliacion': '-',
                     'situacion': 'NO FIGURA EN SPP',
+                    'fecha_devengue': 'No hay datos',
+                    'fecha_consulta': now_str,
                     'estado_sbs': 'NO REGISTRADO',
                     'mensaje': 'No se encontraron resultados en el SPP (Verificar en AFPNET)',
                     'tiempo_seg': elapsed,
@@ -596,6 +611,7 @@ class SBSWorkerThread(threading.Thread):
                     'cuspp': '-',
                     'fecha_afiliacion': '-',
                     'situacion': 'PAUSA DE SEGURIDAD',
+                    'fecha_consulta': now_str,
                     'estado_sbs': 'BLOQUEO_SEGURIDAD',
                     'mensaje': 'El portal SBS impuso una pausa por tráfico. Aguarde unos instantes.',
                     'tiempo_seg': elapsed,
@@ -613,32 +629,9 @@ class SBSWorkerThread(threading.Thread):
                 'cuspp': '-',
                 'fecha_afiliacion': '-',
                 'situacion': 'RETO CAPTCHA',
+                'fecha_consulta': now_str,
                 'estado_sbs': 'RECAPTCHA_CHALLENGE',
                 'mensaje': 'El portal SBS presentó reCAPTCHA o la respuesta no cargó a tiempo, tras varios reintentos.',
-                'tiempo_seg': elapsed,
-                'worker_id': self.worker_id
-            }
-
-            # Extraer CUSPP
-            m_cuspp = re.search(r'[0-9]{6}[A-Z0-9]{6}', body_text)
-            cuspp = m_cuspp.group(0) if m_cuspp else '-'
-
-            # Extraer fecha de afiliación (formato DD/MM/YYYY)
-            m_fecha = re.search(r'desde el[\s\|:]*(\d{2}/\d{2}/\d{4})', body_text, re.IGNORECASE)
-            fecha_afil = m_fecha.group(1) if m_fecha else '-'
-
-            # Extraer situación
-            m_sit = re.search(r'situaci[oó]n actual es[\s\|:]*([A-Za-z]+)', body_text, re.IGNORECASE)
-            situacion = m_sit.group(1) if m_sit else 'AFILIADO'
-
-            return {
-                'afiliado_spp': True,
-                'afp': afp_detectada,
-                'cuspp': cuspp,
-                'fecha_afiliacion': fecha_afil,
-                'situacion': situacion,
-                'estado_sbs': 'ENCONTRADO',
-                'mensaje': f'Afiliado a {afp_detectada} desde {fecha_afil}',
                 'tiempo_seg': elapsed,
                 'worker_id': self.worker_id
             }
@@ -646,6 +639,7 @@ class SBSWorkerThread(threading.Thread):
         except Exception as e:
             elapsed = round(time.time() - t0, 2)
             err_msg = str(e)
+            now_str = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
             if self.interrupted or not self.running:
                 return {
                     'afiliado_spp': None,
@@ -653,6 +647,7 @@ class SBSWorkerThread(threading.Thread):
                     'cuspp': '-',
                     'fecha_afiliacion': '-',
                     'situacion': 'CANCELADO',
+                    'fecha_consulta': now_str,
                     'estado_sbs': 'CANCELADO',
                     'mensaje': 'Verificación detenida por el usuario.',
                     'tiempo_seg': elapsed,
@@ -671,6 +666,7 @@ class SBSWorkerThread(threading.Thread):
                     'cuspp': '-',
                     'fecha_afiliacion': '-',
                     'situacion': 'VENTANA CERRADA',
+                    'fecha_consulta': now_str,
                     'estado_sbs': 'ERROR',
                     'mensaje': 'La ventana del navegador se cerró tras varios reintentos.',
                     'tiempo_seg': elapsed,
@@ -691,6 +687,7 @@ class SBSWorkerThread(threading.Thread):
                     'cuspp': '-',
                     'fecha_afiliacion': '-',
                     'situacion': 'LATENCIA SBS',
+                    'fecha_consulta': now_str,
                     'estado_sbs': 'TIMEOUT',
                     'mensaje': 'El portal SBS tardó en responder, tras varios reintentos.',
                     'tiempo_seg': elapsed,
@@ -712,6 +709,7 @@ class SBSWorkerThread(threading.Thread):
                 'cuspp': '-',
                 'fecha_afiliacion': '-',
                 'situacion': 'ERROR CONEXIÓN',
+                'fecha_consulta': now_str,
                 'estado_sbs': 'ERROR',
                 'mensaje': f'Error en consulta SBS tras varios reintentos: {err_msg}',
                 'tiempo_seg': elapsed,
@@ -927,6 +925,7 @@ class SBSServiceManager:
                 'cuspp': '-',
                 'fecha_afiliacion': '-',
                 'situacion': 'TIMEOUT',
+                'fecha_consulta': datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
                 'estado_sbs': 'TIMEOUT',
                 'mensaje': 'Tiempo de consulta agotado',
                 'tiempo_seg': timeout_wait

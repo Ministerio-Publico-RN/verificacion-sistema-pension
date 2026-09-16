@@ -1,10 +1,12 @@
-import React from 'react';
-import { X, User, Landmark, Building, CheckCircle2, AlertTriangle, ShieldCheck } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, User, Landmark, Building, CheckCircle2, AlertTriangle, ShieldCheck, FileText } from 'lucide-react';
 import { splitRegimenPrevisional } from '../../hooks/useWorkers';
+import { SbsFichaModal } from './SbsFichaModal';
 
 export function WorkerDetailModal({ worker, onClose }) {
   if (!worker) return null;
 
+  const [showSbsFicha, setShowSbsFicha] = useState(false);
   const sbs = worker.sbs_resultado;
   const afpnet = worker.afpnet_resultado;
   const { regimen, previsional } = splitRegimenPrevisional(worker);
@@ -43,13 +45,26 @@ export function WorkerDetailModal({ worker, onClose }) {
           </div>
 
           <div className="detail-card">
-            <h4><Building size={15} /> Resultado Oficial SBS</h4>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <h4 style={{ margin: 0 }}><Building size={15} /> Resultado Oficial SBS</h4>
+              {sbs && (
+                <button
+                  type="button"
+                  className="mpfn-btn-outline"
+                  onClick={() => setShowSbsFicha(true)}
+                  style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                >
+                  <FileText size={13} /> Ver ficha SBS
+                </button>
+              )}
+            </div>
             {sbs ? (
               <div className="detail-rows">
                 <div><strong>AFP Certificada:</strong> <span className="text-gold font-bold">{sbs.afp || 'DESCONOCIDO'}</span></div>
                 <div><strong>Fecha Afiliación Oficial:</strong> <span className="font-mono">{sbs.fecha_afiliacion || '-'}</span></div>
                 <div><strong>CUSPP Oficial:</strong> <span className="font-mono">{sbs.cuspp || '-'}</span></div>
                 <div><strong>Situación:</strong> {sbs.situacion || '-'}</div>
+                <div><strong>Fecha y hora de consulta:</strong> <span className="font-mono">{sbs.fecha_consulta || '-'}</span></div>
                 {sbs.mensaje && <div className="text-sm text-muted"><strong>Detalle:</strong> {sbs.mensaje}</div>}
               </div>
             ) : (
@@ -103,12 +118,26 @@ export function WorkerDetailModal({ worker, onClose }) {
           </div>
         </div>
 
-        <div className="modal-footer">
+        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {sbs ? (
+            <button 
+              type="button" 
+              className="mpfn-btn-secondary" 
+              onClick={() => setShowSbsFicha(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <FileText size={15} /> Ver ficha oficial SBS
+            </button>
+          ) : <div />}
           <button type="button" className="mpfn-btn-primary" onClick={onClose}>
             Cerrar Ficha
           </button>
         </div>
       </div>
+
+      {showSbsFicha && (
+        <SbsFichaModal worker={worker} onClose={() => setShowSbsFicha(false)} />
+      )}
     </div>
   );
 }

@@ -193,6 +193,9 @@ export function useSbsStream({ onWorkerUpdate, onLog }) {
 
         try {
           const sbsRes = await verifyWorkerSBS(worker, executionId);
+          if (sbsRes && !sbsRes.fecha_consulta) {
+            sbsRes.fecha_consulta = new Date().toLocaleString('es-PE', { hour12: false });
+          }
 
           completed++;
           const pct = Math.round((completed / total) * 100);

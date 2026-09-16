@@ -191,6 +191,9 @@ export function App() {
 
     try {
       const sbsRes = await verifyWorkerSBS(worker, executionId);
+      if (sbsRes && !sbsRes.fecha_consulta) {
+        sbsRes.fecha_consulta = new Date().toLocaleString('es-PE', { hour12: false });
+      }
       updateWorker(worker.dni, {
         sbs_resultado: sbsRes,
         sbs_consultado: sbsRes?.estado_sbs !== 'CANCELADO'

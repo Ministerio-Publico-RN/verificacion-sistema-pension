@@ -8,6 +8,7 @@ import re
 import json
 import mimetypes
 import urllib.parse
+from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from socketserver import ThreadingMixIn
 
@@ -218,6 +219,8 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
 
             sbs = get_sbs_service()
             result = sbs.query_worker(dni, ape_pat, ape_mat, primer_nom, segundo_nom)
+            if isinstance(result, dict) and not result.get('fecha_consulta'):
+                result['fecha_consulta'] = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
 
             if execution_id and dni:
                 try:
