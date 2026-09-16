@@ -30,7 +30,9 @@ function Invoke-Step {
 
 Push-Location "$root/frontend"
 try {
-    Invoke-Step "== 1/3 Compilando frontend (npm ci) ==" { npm ci }
+    if (-not (Test-Path "node_modules/.bin/vite.cmd") -and -not (Test-Path "node_modules/vite")) {
+        Invoke-Step "== 1/3 Instalando dependencias de frontend (npm install) ==" { npm install }
+    }
     Invoke-Step "== 1/3 Compilando frontend (npm run build) ==" { npm run build }
 } finally {
     Pop-Location
