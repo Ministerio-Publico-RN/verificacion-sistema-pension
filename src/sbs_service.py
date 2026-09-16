@@ -370,6 +370,76 @@ class SBSWorkerThread(threading.Thread):
 
         self.close_browser()
 
+    def _ensure_and_click_buscar(self, dni):
+        """
+        Asegura que el botón 'Buscar' sea presionado con éxito y despache la consulta:
+        1. Desplaza el botón al centro visible del viewport (evita problemas en pantallas pequeñas/laptops).
+        2. Satisface las validaciones de cliente de ASP.NET para que el postback no sea bloqueado.
+        3. Despacha la búsqueda mediante Playwright con fallback integral en JavaScript (DoPost / DoValidate / click).
+        """
+        try:
+            # 1. Asegurar visibilidad en el viewport
+            btn_loc = self.page.locator("#ctl00_ContentPlaceHolder1_btnBuscar")
+            if btn_loc.count() > 0:
+                try:
+                    btn_loc.scroll_into_view_if_needed(timeout=2000)
+                except Exception:
+                    pass
+
+            # 2. Despacho mediante JavaScript asegurando validaciones y reCAPTCHA
+            self.page.evaluate("""() => {
+                const btn = document.getElementById('ctl00_ContentPlaceHolder1_btnBuscar');
+                if (!btn) return;
+
+                // Asegurar que validadores cliente de ASP.NET permitan el postback
+                if (typeof Page_IsValid !== 'undefined') Page_IsValid = true;
+                if (typeof Page_Validators !== 'undefined' && Array.isArray(Page_Validators)) {
+                    for (let i = 0; i < Page_Validators.length; i++) {
+                        const val = Page_Validators[i];
+                        if (val) {
+                            val.isvalid = true;
+                            if (val.style) val.style.display = 'none';
+                        }
+                    }
+                }
+
+                // Si DoLoad no se ha ejecutado, correrlo para inicializar btnBuscarEvent
+                if (typeof window.DoLoad === 'function' && typeof window.btnBuscarEvent === 'undefined') {
+                    try { window.DoLoad(); } catch(e) {}
+                }
+
+                // Caso A: Si grecaptcha ya generó un token, ejecutar directamente DoPost()
+                const recaptchaResp = document.getElementById('g-recaptcha-response');
+                if (recaptchaResp && recaptchaResp.value && typeof window.DoPost === 'function') {
+                    window.DoPost();
+                    return;
+                }
+
+                // Caso B: Si DoValidate está disponible en window o como onclick
+                if (typeof window.DoValidate === 'function') {
+                    try {
+                        window.DoValidate(new Event('click'));
+                        return;
+                    } catch(e) {}
+                }
+
+                // Caso C: Despachar evento click nativo
+                try {
+                    btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                } catch(e) {
+                    btn.click();
+                }
+            }""")
+
+            # 3. Disparo complementario con Playwright
+            try:
+                self.page.click("#ctl00_ContentPlaceHolder1_btnBuscar", timeout=2000, force=True)
+            except Exception:
+                pass
+
+        except Exception as e:
+            print(f"[SBS Worker {self.worker_id}] Advertencia al pulsar botón Buscar: {e}")
+
     def _execute_query(self, params, retry_count=0):
         dni = params.get('dni', '').strip()
         ape_pat = clean_mojibake(params.get('ape_paterno', ''))
@@ -440,7 +510,6 @@ class SBSWorkerThread(threading.Thread):
             if not self.current_headless:
                 try:
                     self.page.bring_to_front()
-                    bring_window_to_front()
                 except Exception:
                     pass
 
@@ -469,7 +538,7 @@ class SBSWorkerThread(threading.Thread):
             # 3. Limpiar cualquier texto de respuesta o mensaje residual del trabajador previo
             try:
                 self.page.evaluate("""() => {
-                    const msg = document.querySelector('#ctl00_ContentPlaceHolder1_lblMensaje, #ctl00_ContentPlaceHolder1_lblError');
+                    const msg = document.querySelector('#ctl00_ContentPlaceHolder1_lblMensaje, #ctl00_ContentPlaceHolder1_lblError, #ctl00_ContentPlaceHolder1_lblErrorTxt');
                     if (msg) msg.textContent = '';
                 }""")
             except Exception:
@@ -483,15 +552,28 @@ class SBSWorkerThread(threading.Thread):
             self.page.fill("#ctl00_ContentPlaceHolder1_txtPri_nom", primer_nom, timeout=6000)
             self.page.fill("#ctl00_ContentPlaceHolder1_txtSeg_nom", segundo_nom or "", timeout=6000)
 
+            # Esperar brevemente a que reCAPTCHA esté listo en conexiones lentas o PCs con menor CPU
+            try:
+                self.page.wait_for_function(
+                    "() => (typeof window.grecaptcha !== 'undefined' && typeof window.grecaptcha.execute === 'function') || document.querySelector('#ctl00_ContentPlaceHolder1_btnOtro_Registro') !== null",
+                    timeout=2500
+                )
+            except Exception:
+                pass
+
             # 5. Marcar el DOM con el DNI actual para saber cuándo el postback de SBS ha respondido de verdad
             self.page.evaluate(f"() => document.body.setAttribute('data-sbs-cur-dni', '{dni}')")
 
-            # 6. Enviar búsqueda
-            self.page.click("#ctl00_ContentPlaceHolder1_btnBuscar", timeout=6000)
+            # 6. Enviar búsqueda asegurando visibilidad y despacho
+            self._ensure_and_click_buscar(dni)
             
             # 7. Esperar activamente en micro-intervalos a que el servidor de la SBS entregue la respuesta
             t_wait_start = time.time()
+            last_retrigger_time = t_wait_start
+            retrigger_count = 0
+            max_retriggers = 3
             response_arrived = False
+
             while time.time() - t_wait_start < 15:
                 if self.interrupted or not self.running:
                     return {
@@ -527,6 +609,14 @@ class SBSWorkerThread(threading.Thread):
                         ]):
                             response_arrived = True
                             break
+
+                    # Caso C: Reintento proactivo si el servidor aún no inicia el postback tras 2.2 segundos
+                    now = time.time()
+                    if attr_marker == dni and (now - last_retrigger_time >= 2.2) and retrigger_count < max_retriggers:
+                        retrigger_count += 1
+                        last_retrigger_time = now
+                        print(f"[SBS Worker {self.worker_id}] Confirmando/reintentando presionar botón Buscar (intento {retrigger_count + 1} para DNI {dni})...")
+                        self._ensure_and_click_buscar(dni)
                 except Exception:
                     pass
                 self.page.wait_for_timeout(200)

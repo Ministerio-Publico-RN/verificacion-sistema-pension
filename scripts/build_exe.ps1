@@ -11,6 +11,9 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $exePath = Join-Path $root "dist/VerificacionPrevisional-MPFN.exe"
 
+# Cerrar instancias previas si están abiertas para evitar PermissionError al sobrescribir el .exe
+Get-Process -Name "VerificacionPrevisional-MPFN*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
 # $ErrorActionPreference = "Stop" NO detiene el script si un programa externo
 # (npm, python, pyinstaller) termina con codigo de salida distinto de 0 -- solo
 # afecta errores de PowerShell. Por eso cada paso externo se valida a mano con
