@@ -5,7 +5,7 @@ export function ModeSelectScreen({ onSelectMode }) {
   return (
     <div className="mpfn-mode-select-wrap">
       <div className="mpfn-mode-select-header">
-        <h2>¿Qué desea verificar?</h2>
+        <h2>¿Qué desea verificar hoy?</h2>
         <p className="text-muted">Elija el origen de los trabajadores a verificar contra el portal SBS</p>
       </div>
 
