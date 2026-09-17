@@ -76,7 +76,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                 desktop_name = buf.value
             except Exception:
                 pass
-            self.send_json({'status': 'ok', 'app': 'MPFN Verificación Previsional', 'version': '1.0.0', 'desktop': desktop_name})
+            self.send_json({'status': 'ok', 'app': 'MPFN Verificación Previsional', 'version': updater.CURRENT_VERSION, 'desktop': desktop_name})
         elif path == '/api/sbs/config':
             sbs = get_sbs_service()
             self.send_json(sbs.get_config())
