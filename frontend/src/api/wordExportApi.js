@@ -1,4 +1,4 @@
-import { Document, Packer, Paragraph, TextRun, ImageRun } from 'docx';
+import { Document, Packer, Paragraph, TextRun, ImageRun, AlignmentType } from 'docx';
 import html2canvas from 'html2canvas';
 import { downloadBlob } from './exportApi';
 
@@ -53,7 +53,7 @@ export function generateSbsFichaHtml(worker) {
 
   if (isAfiliado) {
     return `
-      <div style="background:#ffffff; padding:10px; font-family:'Trebuchet MS', Arial, sans-serif; font-size:12px; line-height:1.45; color:#333333;">
+      <div style="box-sizing:border-box; width:100%; background:#ffffff; padding:10px 14px; font-family:'Trebuchet MS', Arial, sans-serif; font-size:12px; line-height:1.45; color:#333333;">
         <div style="border-bottom:1px solid #777777; padding-bottom:4px; margin-bottom:10px;">
           <strong style="color:#002469; font-size:13px; font-family:'Century Gothic', Arial, sans-serif;">
             REPORTE DE SITUACIÓN PREVISIONAL EN EL SISTEMA PRIVADO DE PENSIONES :
@@ -132,7 +132,7 @@ export function generateSbsFichaHtml(worker) {
 
   // Caso No Registrado en SPP
   return `
-    <div style="background:#ffffff; padding:10px; font-family:'Trebuchet MS', Arial, sans-serif; font-size:12px; line-height:1.45; color:#333333;">
+    <div style="box-sizing:border-box; width:100%; background:#ffffff; padding:10px 14px; font-family:'Trebuchet MS', Arial, sans-serif; font-size:12px; line-height:1.45; color:#333333;">
       <div style="background:#2174e5; color:#ffffff; padding:6px 12px; border-radius:4px 4px 0 0; font-weight:bold; font-size:12px;">
         BÚSQUEDA AFILIADO EN EL SISTEMA PRIVADO DE PENSIONES
       </div>
@@ -196,20 +196,52 @@ export function generateSbsFichaHtml(worker) {
   `;
 }
 
+function dataUrlToUint8Array(dataUrl) {
+  const base64 = dataUrl.split(',')[1];
+  const binaryString = window.atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+// Yield sin estrangulamiento de timers en segundo plano (MessageChannel evita la pausa a 1000ms de Chromium en pestañas inactivas)
+function yieldToEventLoop() {
+  return new Promise((resolve) => {
+    if (typeof MessageChannel !== 'undefined') {
+      const channel = new MessageChannel();
+      channel.port1.onmessage = () => {
+        channel.port1.close();
+        channel.port2.close();
+        resolve();
+      };
+      channel.port2.postMessage(null);
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
+
 export async function exportCierreAltasWord(workers, onProgress) {
   if (!workers || workers.length === 0) {
     throw new Error('No hay trabajadores para exportar.');
   }
 
-  // Contenedor temporal aislado fuera de la vista para renderizado de fichas
+  // Contenedor temporal en el viewport (z-index -9999) para que Chromium mantenga aceleración gráfica
+  // activa y no pause el renderizado cuando la persona usuaria cambia de pantalla o ventana.
   const container = document.createElement('div');
   container.id = 'sbs-ficha-word-renderer';
   container.style.position = 'fixed';
-  container.style.left = '-9999px';
+  container.style.left = '0';
   container.style.top = '0';
-  container.style.width = '750px';
+  container.style.width = '712px';
+  container.style.overflow = 'hidden';
   container.style.background = '#ffffff';
   container.style.zIndex = '-9999';
+  container.style.pointerEvents = 'none';
+  container.style.opacity = '0.01'; // Permanece como capa activa para Chromium sin ser visible al usuario
   container.style.boxSizing = 'border-box';
   document.body.appendChild(container);
 
@@ -223,8 +255,8 @@ export async function exportCierreAltasWord(workers, onProgress) {
       // Renderizar el HTML de la ficha en el contenedor
       container.innerHTML = generateSbsFichaHtml(worker);
 
-      // Breve pausa para asegurar renderizado de fuentes y estilos en el DOM
-      await new Promise(resolve => setTimeout(resolve, 40));
+      // Ceder control al event loop sin retrasos para refrescar la interfaz y evitar congelamientos
+      await yieldToEventLoop();
 
       const canvas = await html2canvas(container, {
         scale: 1.5,
@@ -233,9 +265,9 @@ export async function exportCierreAltasWord(workers, onProgress) {
         logging: false
       });
 
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-      const arrayBuffer = await blob.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
+      // Conversión síncrona directa y veloz de DataURL a Uint8Array (sin pasar por toBlob asíncrono)
+      const dataUrl = canvas.toDataURL('image/png');
+      const uint8Array = dataUrlToUint8Array(dataUrl);
 
       const workerName = (
         worker.apellidos_nombres ||
@@ -243,9 +275,10 @@ export async function exportCierreAltasWord(workers, onProgress) {
         `${worker.ape_paterno || worker.paterno || ''} ${worker.ape_materno || worker.materno || ''}, ${worker.nombres || worker.primer_nombre || ''}`
       ).trim().toUpperCase();
 
-      // Dimensiones para la hoja Word (adaptado para 2 fichas por página A4 sin desborde)
-      const imgWidth = 490;
-      const imgHeight = Math.round(490 * (canvas.height / canvas.width));
+      // Dimensiones para la hoja Word: Ocupa exactamente todo el ancho útil de la página (712px)
+      // entre los márgenes laterales fijados en 600 dxa (~15mm)
+      const imgWidth = 712;
+      const imgHeight = Math.round(712 * (canvas.height / canvas.width));
 
       // Nombre y DNI en la misma línea, con salto de página cada 2 trabajadores
       children.push(
@@ -284,6 +317,7 @@ export async function exportCierreAltasWord(workers, onProgress) {
           spacing: { before: (i % 2 === 0) ? 0 : 120, after: 50 }
         }),
         new Paragraph({
+          alignment: AlignmentType.CENTER,
           children: [
             new ImageRun({
               data: uint8Array,
@@ -303,16 +337,20 @@ export async function exportCierreAltasWord(workers, onProgress) {
     } catch (_) {}
   }
 
-  // Generar documento .docx con márgenes optimizados para 2 trabajadores por hoja
+  // Generar documento .docx con tamaño A4 explícito y márgenes laterales de 600 dxa (15mm) para ancho completo
   const doc = new Document({
     sections: [{
       properties: {
         page: {
+          size: {
+            width: 11906,
+            height: 16838
+          },
           margin: {
-            top: 500, // ~0.35 pulgada
-            bottom: 500,
-            left: 550,
-            right: 550
+            top: 450,    // ~0.31 pulgada
+            bottom: 450, // ~0.31 pulgada
+            left: 600,   // ~0.42 pulgada (~15 mm)
+            right: 600   // ~0.42 pulgada (~15 mm)
           }
         }
       },

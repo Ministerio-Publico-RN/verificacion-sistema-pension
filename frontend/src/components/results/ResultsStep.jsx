@@ -282,8 +282,8 @@ export function ResultsStep({
             </div>
             <span style={{ color: '#475569' }}>
               1. <strong>No tiene registro en SBS</strong> (NO REGISTRADO).<br />
-              2. <strong>Sin CUSPP válido de 12 caracteres</strong> (en blanco, con 'X' o texto como 'NO REGISTRADO').<br />
-              3. En columna <strong>PREVISIONA no indica "SNP"</strong> (incluso si tiene AFP tentativa como Profuturo).
+              2. <strong>Sin CUSPP válido de 12 caracteres:</strong> el valor no debe ser un string alfanumérico de 12 caracteres sin espacios (en blanco, con 'X' o texto como 'NO REGISTRADO').<br />
+              3. En columna <strong>PREVISIONA no indica "SNP"</strong> (incluso si registra una AFP tentativa como Profuturo).
             </span>
           </div>
 
@@ -294,7 +294,7 @@ export function ResultsStep({
             </div>
             <span style={{ color: '#475569' }}>
               1. <strong>No tiene registro en SBS</strong> (NO REGISTRADO).<br />
-              2. En columna <strong>PREVISIONA registra "SNP", "ONP" o código de ley "19990"</strong>.
+              2. En columna <strong>PREVISIONA registra "SNP", "ONP" o régimen previsional "19990"</strong>.
             </span>
           </div>
         </div>

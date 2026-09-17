@@ -100,7 +100,7 @@ export function compareWorkerFields(w) {
 }
 
 export function evaluateWorkerSemaforo(w) {
-  const siga = (w.previsiona_siga || '').toUpperCase();
+  const siga = ((w.previsiona_siga || '') + ' ' + (w.regimen_siga || '')).toUpperCase();
   const sbs = w.sbs_resultado;
   const afpnet = w.afpnet_resultado;
 
@@ -134,11 +134,11 @@ export function evaluateWorkerSemaforo(w) {
     }
 
     // B. Comparación de CUSPP (si SIGA registra CUSPP y la entidad oficial reporta CUSPP)
-    const cusppSiga = normalizeCuspp(w.cuspp_siga);
+    const cusppSiga = normalizeCuspp(w.cuspp_siga || w.cuspp);
     const cusppOficial = normalizeCuspp(sbs?.cuspp || afpnet?.cuspp);
     if (cusppSiga && cusppSiga.length >= 6 && cusppOficial && cusppOficial.length >= 6) {
       if (cusppSiga !== cusppOficial) {
-        discrepancies.push(`CUSPP distinto (SIGA: ${w.cuspp_siga} | SBS: ${sbs?.cuspp || afpnet?.cuspp})`);
+        discrepancies.push(`CUSPP distinto (SIGA: ${w.cuspp_siga || w.cuspp} | SBS: ${sbs?.cuspp || afpnet?.cuspp})`);
       }
     }
 
@@ -161,14 +161,15 @@ export function evaluateWorkerSemaforo(w) {
   // 3. No figura en SPP (SBS / AFPNET reporta NO REGISTRADO)
   if ((sbs && sbs.estado_sbs === 'NO REGISTRADO') || (afpnet && !afpnet.afiliado_spp && afpnet.estado === 'NO REGISTRADO')) {
     // Regla 1: Verificar si TIENE un CUSPP que sea un string de 12 caracteres (letras y números) sin espacios intermedios
-    const rawCuspp = String(w.cuspp_siga || '').trim();
+    const rawCuspp = String(w.cuspp_siga || w.cuspp || '').trim();
     const isExact12Alphanumeric = /^[A-Za-z0-9]{12}$/.test(rawCuspp);
-    const isPlaceholder = /^(.)\1{11}$/i.test(rawCuspp); // ej: XXXXXXXXXXXX
-    const hasValidCuspp = isExact12Alphanumeric && !isPlaceholder;
+    const isPlaceholder = /^(.)\1{11}$/i.test(rawCuspp); // ej: XXXXXXXXXXXX, 000000000000
+    const isOnlyX = /^X+$/i.test(rawCuspp);
+    const hasValidCuspp = isExact12Alphanumeric && !isPlaceholder && !isOnlyX;
 
     // Si tiene un CUSPP real de 12 caracteres en SIGA pero SBS reporta NO REGISTRADO: Discrepancia
     if (hasValidCuspp) {
-      return { tone: 'discrepancia', text: `SIGA registra CUSPP ${w.cuspp_siga}, pero figura NO REGISTRADO en SBS` };
+      return { tone: 'discrepancia', text: `SIGA registra CUSPP ${rawCuspp}, pero figura NO REGISTRADO en SBS` };
     }
 
     // Regla 3: Si en PREVISIONA tiene el valor "SNP" (o "ONP" / "19990"):
