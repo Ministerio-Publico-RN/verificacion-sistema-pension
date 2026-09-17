@@ -131,6 +131,8 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             self.handle_execution_status(int(re.match(r'^/api/executions/(\d+)/status$', path).group(1)))
         elif path == '/api/app/apply-update':
             self.handle_apply_update()
+        elif path == '/api/app/finalize-update':
+            self.handle_finalize_update()
         else:
             self.send_error(404, "Endpoint no encontrado")
 
@@ -153,6 +155,13 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             self.send_json(res)
         except Exception as e:
             self.send_json({'success': False, 'message': f"Error al aplicar actualización: {str(e)}"}, status=500)
+
+    def handle_finalize_update(self):
+        try:
+            res = updater.finalize_and_exit()
+            self.send_json(res)
+        except Exception as e:
+            self.send_json({'success': False, 'message': f"Error al finalizar actualización: {str(e)}"}, status=500)
 
     def handle_executions_list(self):
         try:

@@ -14,7 +14,7 @@ import subprocess
 import threading
 from paths import is_frozen
 
-CURRENT_VERSION = "1.0.13"
+CURRENT_VERSION = "1.0.14"
 GITHUB_REPO = "Ministerio-Publico-RN/verificacion-sistema-pension"
 
 
@@ -34,68 +34,46 @@ def parse_version(v_str):
 
 def check_for_updates():
     """
-    Consulta la API de GitHub Releases para verificar si existe una versión superior a la actual.
+    Consulta la API de GitHub Releases para obtener la última versión disponible.
+    Compara con CURRENT_VERSION.
     """
     url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-    req = urllib.request.Request(
-        url,
-        headers={
-            'User-Agent': 'MPFN-Verificacion-Previsional-Updater',
-            'Accept': 'application/vnd.github.v3+json'
-        }
-    )
+    headers = {
+        'User-Agent': 'MPFN-Verificacion-Previsional-Updater',
+        'Accept': 'application/vnd.github.v3+json'
+    }
 
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=8) as resp:
             if resp.status != 200:
-                return {
-                    'has_update': False,
-                    'current_version': CURRENT_VERSION,
-                    'message': f"Servidor de GitHub respondió con código {resp.status}."
-                }
+                return {'has_update': False, 'error': f"HTTP {resp.status}"}
             data = json.loads(resp.read().decode('utf-8'))
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            return {
-                'has_update': False,
-                'current_version': CURRENT_VERSION,
-                'latest_version': CURRENT_VERSION,
-                'message': 'No hay nuevas versiones publicadas en GitHub actualmente.'
-            }
-        return {
-            'has_update': False,
-            'current_version': CURRENT_VERSION,
-            'message': f"Error de conexión con GitHub (HTTP {e.code})."
-        }
     except Exception as e:
-        return {
-            'has_update': False,
-            'current_version': CURRENT_VERSION,
-            'message': f"No se pudo comprobar actualizaciones: {str(e)}"
-        }
+        return {'has_update': False, 'error': str(e)}
 
-    tag_name = data.get('tag_name', '')
-    latest_ver = parse_version(tag_name)
-    current_ver = parse_version(CURRENT_VERSION)
+    latest_tag = data.get('tag_name', '')
+    latest_version = parse_version(latest_tag)
+    curr_version = parse_version(CURRENT_VERSION)
 
-    has_update = latest_ver > current_ver
+    has_update = latest_version > curr_version
 
-    # Buscar el ejecutable en los assets
     exe_asset = None
-    for asset in data.get('assets', []):
-        name = asset.get('name', '').lower()
+    assets = data.get('assets', [])
+    for asset in assets:
+        name = asset.get('name', '')
         if name.endswith('.exe'):
             exe_asset = asset
             break
 
     download_url = exe_asset.get('browser_download_url') if exe_asset else None
-    size_mb = round(exe_asset.get('size', 0) / (1024 * 1024), 2) if exe_asset else 0
+    size_mb = round(exe_asset.get('size', 0) / (1024 * 1024), 1) if exe_asset else 0
 
     return {
         'has_update': has_update,
         'current_version': CURRENT_VERSION,
-        'latest_version': tag_name.lstrip('vV'),
-        'release_name': data.get('name') or tag_name,
+        'latest_version': latest_tag.lstrip('vV'),
+        'release_name': data.get('name', latest_tag),
         'release_notes': data.get('body', ''),
         'download_url': download_url,
         'asset_name': exe_asset.get('name') if exe_asset else None,
@@ -107,7 +85,8 @@ def check_for_updates():
 
 def apply_update(download_url=None):
     """
-    Descarga la nueva versión del .exe y ejecuta el script de reemplazo y reinicio automático.
+    Descarga la nueva versión del .exe a un archivo temporal (.update) y lo valida.
+    No mata el proceso inmediatamente para permitir que el usuario vea la confirmación.
     """
     if not is_frozen():
         return {
@@ -128,12 +107,6 @@ def apply_update(download_url=None):
     exe_dir = os.path.dirname(exe_path)
     exe_name = os.path.basename(exe_path)
     temp_new_exe = os.path.join(exe_dir, f"{exe_name}.update")
-    safe_exe_path = exe_path.replace("'", "''")
-    safe_temp_exe = temp_new_exe.replace("'", "''")
-    safe_exe_dir = exe_dir.replace("'", "''")
-    safe_exe_name = exe_name.replace("'", "''")
-    log_path = os.path.join(exe_dir, "updater.log").replace("'", "''")
-    ps1_path = os.path.join(exe_dir, "_updater_swap.ps1")
 
     try:
         req = urllib.request.Request(
@@ -168,7 +141,33 @@ def apply_update(download_url=None):
     except Exception as e:
         return {'success': False, 'message': f"Error al validar archivo descargado: {e}"}
 
-    ps1_content = f"""# Script de reemplazo y reinicio automatico MPFN
+    return {
+        'success': True,
+        'message': 'Actualización descargada con éxito. Listo para aplicar y reiniciar.'
+    }
+
+
+def finalize_and_exit():
+    """
+    Ejecuta el script de reemplazo del ejecutable tras el cierre del programa y termina el proceso actual.
+    """
+    if not is_frozen():
+        return {'success': False, 'message': 'Solo disponible en ejecutable compilado.'}
+
+    exe_path = os.path.abspath(sys.executable)
+    exe_dir = os.path.dirname(exe_path)
+    exe_name = os.path.basename(exe_path)
+    temp_new_exe = os.path.join(exe_dir, f"{exe_name}.update")
+
+    if not os.path.exists(temp_new_exe):
+        return {'success': False, 'message': 'No se encontró el archivo de actualización descargado.'}
+
+    safe_exe_path = exe_path.replace("'", "''")
+    safe_temp_exe = temp_new_exe.replace("'", "''")
+    log_path = os.path.join(exe_dir, "updater.log").replace("'", "''")
+    ps1_path = os.path.join(exe_dir, "_updater_swap.ps1")
+
+    ps1_content = f"""# Script de reemplazo post-cierre MPFN
 $ErrorActionPreference = 'SilentlyContinue'
 $log = '{log_path}'
 
@@ -177,58 +176,30 @@ function Log-Msg($msg) {{
     "[$ts] $msg" | Out-File -FilePath $log -Append -Encoding utf8
 }}
 
-Log-Msg "Iniciando proceso de reemplazo y reinicio..."
-Start-Sleep -Seconds 2
-
-# Detener cualquier proceso del ejecutable anterior
-$exeStem = [System.IO.Path]::GetFileNameWithoutExtension('{safe_exe_name}')
-Log-Msg "Asegurando detencion del proceso $exeStem..."
-Get-Process -Name $exeStem -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Log-Msg "Iniciando reemplazo de archivo tras cierre de la aplicacion..."
+Start-Sleep -Seconds 1
 
 $attempts = 0
-while ($attempts -lt 25) {{
+while ($attempts -lt 30) {{
     $attempts++
     try {{
         if (Test-Path '{safe_exe_path}') {{
             Remove-Item -Path '{safe_exe_path}' -Force -ErrorAction Stop
         }}
-        Log-Msg "Ejecutable anterior eliminado con exito."
+        Log-Msg "Ejecutable anterior eliminado."
         break
     }} catch {{
-        Log-Msg "Esperando liberacion de archivo (intento $attempts)..."
         Start-Sleep -Seconds 1
     }}
 }}
 
-if (Test-Path '{safe_exe_path}') {{
-    Log-Msg "ERROR CRITICO: No se pudo eliminar el ejecutable anterior tras 25 intentos."
-    exit 1
-}}
-
-Log-Msg "Moviendo archivo descargado a {safe_exe_path}..."
 try {{
     Move-Item -Path '{safe_temp_exe}' -Destination '{safe_exe_path}' -Force -ErrorAction Stop
-    Log-Msg "Archivo reemplazado exitosamente."
+    Log-Msg "Actualizacion completada exitosamente en {safe_exe_path}."
 }} catch {{
-    Log-Msg "ERROR al mover archivo nuevo: $_"
-    exit 1
+    Log-Msg "Error al mover archivo: $_"
 }}
 
-# Esperar a que los sockets de red se liberen totalmente
-Log-Msg "Esperando liberacion de puertos de red..."
-Start-Sleep -Seconds 2
-
-Log-Msg "Lanzando nueva version de la aplicacion..."
-try {{
-    $cmdLine = '/c start "" "' + '{safe_exe_path}' + '"'
-    Start-Process -FilePath $env:ComSpec -ArgumentList $cmdLine -WorkingDirectory '{safe_exe_dir}'
-    Log-Msg "Nueva version lanzada exitosamente."
-}} catch {{
-    Log-Msg "ERROR al lanzar nueva version: $_"
-    exit 1
-}}
-
-Start-Sleep -Seconds 1
 Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue
 """
 
@@ -236,7 +207,7 @@ Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue
         with open(ps1_path, 'w', encoding='utf-8') as f:
             f.write(ps1_content)
     except Exception as e:
-        return {'success': False, 'message': f"Error al preparar script de actualización: {e}"}
+        return {'success': False, 'message': f"Error al preparar script: {e}"}
 
     try:
         flags = 0
@@ -256,14 +227,14 @@ Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue
         )
 
         def _delayed_exit():
-            time.sleep(1.5)
+            time.sleep(0.8)
             os._exit(0)
 
         threading.Thread(target=_delayed_exit, daemon=True).start()
 
         return {
             'success': True,
-            'message': 'Actualización descargada con éxito. El sistema se reiniciará automáticamente en unos segundos.'
+            'message': 'Cerrando aplicación y aplicando actualización.'
         }
     except Exception as e:
-        return {'success': False, 'message': f"Error al ejecutar actualizador: {e}"}
+        return {'success': False, 'message': f"Error al ejecutar finalizador: {e}"}

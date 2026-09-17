@@ -10,3 +10,9 @@ export async function applyAppUpdate(downloadUrl = null) {
     body: JSON.stringify({ download_url: downloadUrl })
   });
 }
+
+export async function finalizeAppUpdate() {
+  return await apiRequest('/api/app/finalize-update', {
+    method: 'POST'
+  });
+}

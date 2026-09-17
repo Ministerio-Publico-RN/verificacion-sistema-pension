@@ -1,16 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, ArrowUpCircle, RefreshCw, CheckCircle, AlertTriangle, Download, Sparkles } from 'lucide-react';
-import { checkAppUpdate, applyAppUpdate } from '../../api/updateApi';
+import { X, ArrowUpCircle, RefreshCw, CheckCircle, AlertTriangle, Download, Sparkles, Power } from 'lucide-react';
+import { checkAppUpdate, applyAppUpdate, finalizeAppUpdate } from '../../api/updateApi';
 
 export function UpdateModal({ isOpen, onClose }) {
-  const [status, setStatus] = useState('idle'); // idle | checking | available | up_to_date | downloading | restarting | error
+  const [status, setStatus] = useState('idle'); // idle | checking | available | up_to_date | downloading | downloaded | closing | error
   const [updateInfo, setUpdateInfo] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [downloadProgress, setDownloadProgress] = useState(0);
-  const [countdown, setCountdown] = useState(5);
-  const [reconnectAttempts, setReconnectAttempts] = useState(1);
-  const [isReconnected, setIsReconnected] = useState(false);
-  const [reconnectFailed, setReconnectFailed] = useState(false);
 
   const handleCheck = useCallback(async () => {
     setStatus('checking');
@@ -36,59 +32,8 @@ export function UpdateModal({ isOpen, onClose }) {
       setStatus('idle');
       setErrorMsg('');
       setDownloadProgress(0);
-      setIsReconnected(false);
     }
   }, [isOpen, handleCheck]);
-
-  // Manejo de reinicio y reconexión automática
-  useEffect(() => {
-    if (status !== 'restarting') return;
-
-    let timer = null;
-    let pollInterval = null;
-    let counter = 5;
-    setCountdown(5);
-    setReconnectAttempts(1);
-    setIsReconnected(false);
-    setReconnectFailed(false);
-
-    timer = setInterval(() => {
-      counter -= 1;
-      setCountdown((prev) => (prev > 0 ? prev - 1 : 0));
-      if (counter <= 0) {
-        clearInterval(timer);
-      }
-    }, 1000);
-
-    const pollTimer = setTimeout(() => {
-      let attempts = 0;
-      pollInterval = setInterval(async () => {
-        attempts += 1;
-        setReconnectAttempts(attempts);
-        try {
-          const res = await fetch('/api/status', { cache: 'no-store' });
-          if (res.ok) {
-            clearInterval(pollInterval);
-            setIsReconnected(true);
-            setTimeout(() => {
-              window.location.reload();
-            }, 1200);
-          }
-        } catch {
-          if (attempts >= 40) {
-            clearInterval(pollInterval);
-            setReconnectFailed(true);
-          }
-        }
-      }, 1500);
-    }, 2000);
-
-    return () => {
-      if (timer) clearInterval(timer);
-      if (pollTimer) clearTimeout(pollTimer);
-      if (pollInterval) clearInterval(pollInterval);
-    };
-  }, [status]);
 
   if (!isOpen) return null;
 
@@ -99,8 +44,8 @@ export function UpdateModal({ isOpen, onClose }) {
 
     let current = 8;
     const progInterval = setInterval(() => {
-      current += (92 - current) * 0.08;
-      if (current > 92) current = 92;
+      current += (94 - current) * 0.08;
+      if (current > 94) current = 94;
       setDownloadProgress(current);
     }, 400);
 
@@ -110,16 +55,25 @@ export function UpdateModal({ isOpen, onClose }) {
       if (res.success) {
         setDownloadProgress(100);
         setTimeout(() => {
-          setStatus('restarting');
+          setStatus('downloaded');
         }, 400);
       } else {
-        setErrorMsg(res.message || 'No se pudo aplicar la actualización.');
+        setErrorMsg(res.message || 'No se pudo descargar la actualización.');
         setStatus('error');
       }
     } catch (err) {
       clearInterval(progInterval);
       setErrorMsg(err.message || 'Error durante la descarga de la actualización.');
       setStatus('error');
+    }
+  };
+
+  const handleFinalize = async () => {
+    setStatus('closing');
+    try {
+      await finalizeAppUpdate();
+    } catch {
+      // El backend cierra el proceso de inmediato, es esperado que la conexion se corte
     }
   };
 
@@ -194,7 +148,7 @@ export function UpdateModal({ isOpen, onClose }) {
               )}
 
               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0 }}>
-                Al presionar "Instalar actualización", el sistema descargará el nuevo archivo <code>.exe</code>, reemplazará el ejecutable actual y se reiniciará automáticamente.
+                Al presionar "Descargar e instalar", el sistema descargará la nueva versión. Luego podrá cerrar la aplicación con un solo clic para aplicar el cambio y volver a abrirla.
               </p>
             </div>
           )}
@@ -217,52 +171,52 @@ export function UpdateModal({ isOpen, onClose }) {
             </div>
           )}
 
-          {status === 'restarting' && (
+          {status === 'downloaded' && (
             <div style={{ textAlign: 'center', padding: '20px 10px' }}>
-              {isReconnected ? (
-                <CheckCircle size={40} style={{ color: '#10b981', marginBottom: '14px' }} />
-              ) : reconnectFailed ? (
-                <AlertTriangle size={40} style={{ color: '#f59e0b', marginBottom: '14px' }} />
-              ) : (
-                <RefreshCw size={40} className="mpfn-text-gold" style={{ animation: 'spin 1.2s linear infinite', marginBottom: '14px' }} />
-              )}
-              <h4 style={{ margin: '0 0 8px 0', color: 'var(--text-main)', fontSize: '1.05rem' }}>
-                {isReconnected
-                  ? '¡Sistema actualizado con éxito!'
-                  : reconnectFailed
-                    ? 'Actualización aplicada'
-                    : '¡Descarga completada! Reiniciando...'}
+              <div style={{ display: 'inline-flex', padding: '12px', borderRadius: '50%', backgroundColor: 'rgba(16, 185, 129, 0.1)', marginBottom: '14px' }}>
+                <CheckCircle size={40} style={{ color: '#10b981' }} />
+              </div>
+              <h4 style={{ margin: '0 0 8px 0', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 600 }}>
+                ¡Actualización descargada con éxito!
               </h4>
-              <p style={{ margin: '0 0 16px 0', fontSize: '0.86rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
-                {isReconnected
-                  ? 'El nuevo ejecutable ya está activo. Recargando la aplicación...'
-                  : reconnectFailed
-                    ? 'El archivo se actualizó correctamente. Si el sistema ya abrió en otra ventana o pestaña, puede cerrar esta ventana o pulsar Recargar ahora.'
-                    : countdown > 0
-                      ? `Reemplazando ejecutable y reiniciando el servicio en ${countdown} segundos...`
-                      : `Esperando inicio del nuevo sistema... (intento ${reconnectAttempts}/40)`
-                }
+              <p style={{ margin: '0 0 16px 0', fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>
+                La nueva versión se descargó y verificó correctamente. Para aplicar los cambios, cierre la aplicación usando el botón de abajo y vuelva a abrir el archivo ejecutable.
               </p>
 
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '18px' }}>
                 <button
                   type="button"
                   className="mpfn-btn mpfn-btn-secondary"
                   onClick={onClose}
                 >
-                  Cerrar
+                  Hacerlo más tarde
                 </button>
-                {(isReconnected || reconnectFailed) && (
-                  <button
-                    type="button"
-                    className="mpfn-btn mpfn-btn-primary"
-                    onClick={() => window.location.reload()}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                  >
-                    <RefreshCw size={14} />
-                    <span>Recargar ahora</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className="mpfn-btn mpfn-btn-primary"
+                  onClick={handleFinalize}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', backgroundColor: '#dc2626', borderColor: '#dc2626', color: '#ffffff' }}
+                >
+                  <Power size={16} />
+                  <span>Cerrar aplicación y aplicar</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {status === 'closing' && (
+            <div style={{ textAlign: 'center', padding: '20px 10px' }}>
+              <div style={{ display: 'inline-flex', padding: '12px', borderRadius: '50%', backgroundColor: 'rgba(16, 185, 129, 0.1)', marginBottom: '14px' }}>
+                <CheckCircle size={40} style={{ color: '#10b981' }} />
+              </div>
+              <h4 style={{ margin: '0 0 8px 0', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 600 }}>
+                ¡Actualización aplicada!
+              </h4>
+              <p style={{ margin: '0 0 16px 0', fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>
+                El sistema se ha cerrado y el archivo ejecutable ha sido actualizado a la última versión.
+              </p>
+              <div style={{ background: 'var(--bg-main)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '12px 14px', textAlign: 'left', fontSize: '0.84rem', color: 'var(--text-muted)', marginTop: '14px' }}>
+                💡 <strong>Siguiente paso:</strong> Ya puede hacer doble clic en <code>VerificacionPrevisional-MPFN.exe</code> desde su escritorio para iniciar la nueva versión. Puede cerrar esta pestaña del navegador.
               </div>
             </div>
           )}
@@ -305,7 +259,7 @@ export function UpdateModal({ isOpen, onClose }) {
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             >
               <Download size={16} />
-              <span>Instalar actualización</span>
+              <span>Descargar e instalar</span>
             </button>
           </div>
         )}
