@@ -19,7 +19,7 @@ export function ModeSelectScreen({ onSelectMode }) {
           <div className="mpfn-mode-card-icon">
             <FileCheck size={32} />
           </div>
-          <h3>Verificar de las Altas</h3>
+          <h3>Verificación de Altas</h3>
           <p className="mpfn-mode-card-desc">
             Carga un único reporte de Altas CAS del SIGA (formato con Régimen, CUSPP y Fecha de Afiliación).
           </p>
@@ -37,7 +37,7 @@ export function ModeSelectScreen({ onSelectMode }) {
           <div className="mpfn-mode-card-icon">
             <Users size={32} />
           </div>
-          <h3>Verificar de la PEA</h3>
+          <h3>Verificación de PEA</h3>
           <p className="mpfn-mode-card-desc">
             Carga los 4 reportes de la planilla PEA: Pensionistas, Nombrados (276), CAS (1057) y Contratados (728).
           </p>
