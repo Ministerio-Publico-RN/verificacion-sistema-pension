@@ -1096,6 +1096,7 @@ body {
 
 .mpfn-modal {
   background: var(--bg-card);
+  color: var(--text-main);
   border-radius: 10px;
   width: 100%;
   max-width: 520px;

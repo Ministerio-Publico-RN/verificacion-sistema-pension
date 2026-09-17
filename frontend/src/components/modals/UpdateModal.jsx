@@ -54,11 +54,11 @@ export function UpdateModal({ isOpen, onClose }) {
 
   return (
     <div className="mpfn-modal-backdrop" onClick={status === 'downloading' || status === 'restarting' ? undefined : onClose}>
-      <div className="mpfn-modal" style={{ maxWidth: '520px' }} onClick={(e) => e.stopPropagation()}>
+      <div className="mpfn-modal" style={{ maxWidth: '520px', color: 'var(--text-main)', background: 'var(--bg-card)' }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-title-wrap">
             <ArrowUpCircle size={20} className="mpfn-text-gold" />
-            <h3 style={{ margin: 0 }}>Actualizaciones del Sistema</h3>
+            <h3 style={{ margin: 0, color: '#ffffff' }}>Actualizaciones del Sistema</h3>
           </div>
           {status !== 'downloading' && status !== 'restarting' && (
             <button className="modal-close-btn" onClick={onClose} type="button">
@@ -67,12 +67,12 @@ export function UpdateModal({ isOpen, onClose }) {
           )}
         </div>
 
-        <div className="modal-body" style={{ padding: '20px' }}>
+        <div className="modal-body" style={{ padding: '20px', color: 'var(--text-main)' }}>
           {status === 'checking' && (
             <div style={{ textAlign: 'center', padding: '30px 10px' }}>
               <RefreshCw size={36} className="mpfn-text-gold" style={{ animation: 'spin 1s linear infinite', marginBottom: '16px' }} />
-              <p style={{ margin: 0, fontWeight: 500, color: 'var(--text-primary)' }}>Buscando nuevas versiones en GitHub...</p>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Verificando compatibilidad del ejecutable</span>
+              <p style={{ margin: 0, fontWeight: 600, color: 'var(--text-main)' }}>Buscando nuevas versiones en GitHub...</p>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Verificando compatibilidad del ejecutable</span>
             </div>
           )}
 
@@ -81,8 +81,8 @@ export function UpdateModal({ isOpen, onClose }) {
               <div style={{ display: 'inline-flex', padding: '12px', borderRadius: '50%', backgroundColor: 'rgba(16, 185, 129, 0.1)', marginBottom: '14px' }}>
                 <CheckCircle size={36} style={{ color: '#10b981' }} />
               </div>
-              <h4 style={{ margin: '0 0 8px 0', color: 'var(--text-primary)' }}>¡El sistema está actualizado!</h4>
-              <p style={{ margin: '0 0 16px 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+              <h4 style={{ margin: '0 0 8px 0', fontWeight: 600, color: 'var(--text-main)' }}>¡El sistema está actualizado!</h4>
+              <p style={{ margin: '0 0 16px 0', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
                 Cuentas con la versión más reciente instalada (<strong>v{updateInfo?.current_version || '1.0.0'}</strong>).
               </p>
               <button
@@ -105,7 +105,7 @@ export function UpdateModal({ isOpen, onClose }) {
                   <strong style={{ color: '#d97706', display: 'block', fontSize: '0.95rem' }}>
                     Nueva versión disponible: v{updateInfo?.latest_version}
                   </strong>
-                  <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
                     Versión actual: v{updateInfo?.current_version} {updateInfo?.size_mb ? `• Tamaño: ${updateInfo.size_mb} MB` : ''}
                   </span>
                 </div>
@@ -113,16 +113,16 @@ export function UpdateModal({ isOpen, onClose }) {
 
               {updateInfo?.release_notes && (
                 <div style={{ marginBottom: '16px' }}>
-                  <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '6px' }}>
                     Novedades de la versión:
                   </label>
-                  <div style={{ maxHeight: '160px', overflowY: 'auto', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.85rem', whiteSpace: 'pre-wrap', color: 'var(--text-primary)' }}>
+                  <div style={{ maxHeight: '160px', overflowY: 'auto', padding: '10px 12px', background: 'var(--bg-main)', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '0.85rem', whiteSpace: 'pre-wrap', color: 'var(--text-main)' }}>
                     {updateInfo.release_notes}
                   </div>
                 </div>
               )}
 
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0 }}>
                 Al presionar "Instalar actualización", el sistema descargará el nuevo archivo <code>.exe</code>, reemplazará el ejecutable actual y se reiniciará automáticamente.
               </p>
             </div>
@@ -131,8 +131,8 @@ export function UpdateModal({ isOpen, onClose }) {
           {status === 'downloading' && (
             <div style={{ textAlign: 'center', padding: '30px 10px' }}>
               <Download size={36} className="mpfn-text-gold" style={{ animation: 'bounce 1s infinite', marginBottom: '16px' }} />
-              <h4 style={{ margin: '0 0 8px 0', color: 'var(--text-primary)' }}>Descargando actualización...</h4>
-              <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
+              <h4 style={{ margin: '0 0 8px 0', color: 'var(--text-main)' }}>Descargando actualización...</h4>
+              <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-muted)' }}>
                 Descargando el ejecutable desde GitHub ({updateInfo?.size_mb || '~40'} MB). Por favor no cierre el programa.
               </p>
             </div>
@@ -141,8 +141,8 @@ export function UpdateModal({ isOpen, onClose }) {
           {status === 'restarting' && (
             <div style={{ textAlign: 'center', padding: '30px 10px' }}>
               <CheckCircle size={36} style={{ color: '#10b981', marginBottom: '16px' }} />
-              <h4 style={{ margin: '0 0 8px 0', color: 'var(--text-primary)' }}>¡Actualización descargada con éxito!</h4>
-              <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
+              <h4 style={{ margin: '0 0 8px 0', color: 'var(--text-main)' }}>¡Actualización descargada con éxito!</h4>
+              <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-muted)' }}>
                 Reemplazando el archivo ejecutable y reiniciando el sistema en breves segundos...
               </p>
             </div>
@@ -154,7 +154,7 @@ export function UpdateModal({ isOpen, onClose }) {
                 <AlertTriangle size={36} style={{ color: '#ef4444' }} />
               </div>
               <h4 style={{ margin: '0 0 8px 0', color: '#ef4444' }}>No se pudo completar la operación</h4>
-              <p style={{ margin: '0 0 16px 0', fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
+              <p style={{ margin: '0 0 16px 0', fontSize: '0.88rem', color: 'var(--text-muted)' }}>
                 {errorMsg}
               </p>
               <button
