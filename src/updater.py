@@ -14,7 +14,7 @@ import subprocess
 import threading
 from paths import is_frozen
 
-CURRENT_VERSION = "1.0.11"
+CURRENT_VERSION = "1.0.12"
 GITHUB_REPO = "Ministerio-Publico-RN/verificacion-sistema-pension"
 
 
@@ -220,7 +220,8 @@ Start-Sleep -Seconds 2
 
 Log-Msg "Lanzando nueva version de la aplicacion..."
 try {{
-    Start-Process -FilePath '{safe_exe_path}' -WorkingDirectory '{safe_exe_dir}' -WindowStyle Normal
+    $cmdLine = '/c start "" "' + '{safe_exe_path}' + '"'
+    Start-Process -FilePath $env:ComSpec -ArgumentList $cmdLine -WorkingDirectory '{safe_exe_dir}'
     Log-Msg "Nueva version lanzada exitosamente."
 }} catch {{
     Log-Msg "ERROR al lanzar nueva version: $_"
@@ -239,8 +240,8 @@ Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue
 
     try:
         flags = 0
-        if hasattr(subprocess, 'CREATE_NO_WINDOW'):
-            flags |= subprocess.CREATE_NO_WINDOW
+        if hasattr(subprocess, 'CREATE_NEW_PROCESS_GROUP'):
+            flags |= subprocess.CREATE_NEW_PROCESS_GROUP
 
         subprocess.Popen(
             [
@@ -251,8 +252,7 @@ Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue
                 '-File', ps1_path
             ],
             cwd=exe_dir,
-            creationflags=flags,
-            close_fds=True
+            creationflags=flags
         )
 
         def _delayed_exit():
