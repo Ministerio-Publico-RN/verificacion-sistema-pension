@@ -243,34 +243,45 @@ export async function exportCierreAltasWord(workers, onProgress) {
         `${worker.ape_paterno || worker.paterno || ''} ${worker.ape_materno || worker.materno || ''}, ${worker.nombres || worker.primer_nombre || ''}`
       ).trim().toUpperCase();
 
-      // Dimensiones para la hoja Word (ancho útil aprox. 520px para página A4 estándar)
-      const imgWidth = 520;
-      const imgHeight = Math.round(520 * (canvas.height / canvas.width));
+      // Dimensiones para la hoja Word (adaptado para 2 fichas por página A4 sin desborde)
+      const imgWidth = 490;
+      const imgHeight = Math.round(490 * (canvas.height / canvas.width));
 
+      // Nombre y DNI en la misma línea, con salto de página cada 2 trabajadores
       children.push(
         new Paragraph({
+          pageBreakBefore: (i > 0 && i % 2 === 0),
           children: [
             new TextRun({
-              text: `Nombre: ${workerName}`,
+              text: `Nombre: `,
               bold: true,
-              size: 24, // 12pt
+              size: 21, // ~10.5pt
               font: 'Calibri',
               color: '0F172A'
-            })
-          ],
-          spacing: { before: i === 0 ? 0 : 200, after: 60 }
-        }),
-        new Paragraph({
-          children: [
+            }),
             new TextRun({
-              text: `DNI: ${worker.dni || '-'}`,
+              text: `${workerName}   —   `,
               bold: true,
-              size: 22, // 11pt
+              size: 21,
+              font: 'Calibri',
+              color: '0F172A'
+            }),
+            new TextRun({
+              text: `DNI: `,
+              bold: true,
+              size: 21,
+              font: 'Calibri',
+              color: '2563EB'
+            }),
+            new TextRun({
+              text: `${worker.dni || '-'}`,
+              bold: true,
+              size: 21,
               font: 'Calibri',
               color: '2563EB'
             })
           ],
-          spacing: { after: 140 }
+          spacing: { before: (i % 2 === 0) ? 0 : 120, after: 50 }
         }),
         new Paragraph({
           children: [
@@ -282,18 +293,9 @@ export async function exportCierreAltasWord(workers, onProgress) {
               }
             })
           ],
-          spacing: { after: 200 }
+          spacing: { after: 100 }
         })
       );
-
-      // Salto de página entre trabajadores (excepto después del último)
-      if (i < workers.length - 1) {
-        children.push(
-          new Paragraph({
-            pageBreakBefore: true
-          })
-        );
-      }
     }
   } finally {
     try {
@@ -301,16 +303,16 @@ export async function exportCierreAltasWord(workers, onProgress) {
     } catch (_) {}
   }
 
-  // Generar documento .docx
+  // Generar documento .docx con márgenes optimizados para 2 trabajadores por hoja
   const doc = new Document({
     sections: [{
       properties: {
         page: {
           margin: {
-            top: 720, // 0.5 pulgada
-            bottom: 720,
-            left: 720,
-            right: 720
+            top: 500, // ~0.35 pulgada
+            bottom: 500,
+            left: 550,
+            right: 550
           }
         }
       },

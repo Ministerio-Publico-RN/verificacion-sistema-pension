@@ -158,34 +158,30 @@ export function evaluateWorkerSemaforo(w) {
     return { tone: 'coincidente', text: 'Verificado' };
   }
 
-  // 3. No figura en SPP
+  // 3. No figura en SPP (SBS / AFPNET reporta NO REGISTRADO)
   if ((sbs && sbs.estado_sbs === 'NO REGISTRADO') || (afpnet && !afpnet.afiliado_spp && afpnet.estado === 'NO REGISTRADO')) {
-    const cusppSiga = normalizeCuspp(w.cuspp_siga);
-    if (cusppSiga && cusppSiga.length >= 6) {
+    // Regla 1: Verificar si TIENE un CUSPP que sea un string de 12 caracteres (letras y números) sin espacios intermedios
+    const rawCuspp = String(w.cuspp_siga || '').trim();
+    const isExact12Alphanumeric = /^[A-Za-z0-9]{12}$/.test(rawCuspp);
+    const isPlaceholder = /^(.)\1{11}$/i.test(rawCuspp); // ej: XXXXXXXXXXXX
+    const hasValidCuspp = isExact12Alphanumeric && !isPlaceholder;
+
+    // Si tiene un CUSPP real de 12 caracteres en SIGA pero SBS reporta NO REGISTRADO: Discrepancia
+    if (hasValidCuspp) {
       return { tone: 'discrepancia', text: `SIGA registra CUSPP ${w.cuspp_siga}, pero figura NO REGISTRADO en SBS` };
     }
-    for (const afpName of ['PRIMA', 'INTEGRA', 'PROFUTURO', 'HABITAT']) {
-      if (siga.includes(afpName)) {
-        return { tone: 'discrepancia', text: `SIGA indica ${w.previsiona_siga}, pero figura NO REGISTRADO en SBS` };
-      }
-    }
-    if (siga.includes('ONP') || siga.includes('SNP') || siga.includes('19990')) {
+
+    // Regla 3: Si en PREVISIONA tiene el valor "SNP" (o "ONP" / "19990"):
+    const isSnp = siga.includes('SNP') || siga.includes('ONP') || siga.includes('19990');
+    if (isSnp) {
       return { tone: 'snp', text: 'Inscrito en SNP (ONP) - No registrado en SBS' };
     }
-    
-    // Verificación de nuevo sin afiliación: Régimen SIGA, Fecha Afiliación y CUSPP en blanco
-    const fechaAfil = (w.afiliacion_siga || '').trim();
-    const isSigaBlank = !siga || siga === '-' || siga.includes('SIN');
-    const isFechaBlank = !fechaAfil || fechaAfil === '-' || fechaAfil.includes('SIN') || fechaAfil.includes('N/A');
-    const isCusppBlank = !cusppSiga || cusppSiga === '-';
 
-    if (isSigaBlank && isFechaBlank && isCusppBlank) {
-      return { tone: 'sin_afiliacion', text: 'Nuevo sin afiliación previsional (Padrón en blanco)' };
-    }
-    if (isSigaBlank) {
-      return { tone: 'sin_afiliacion', text: 'Sin afiliación previa' };
-    }
-    return { tone: 'discrepancia', text: `SIGA indica ${w.previsiona_siga || 'afiliación'}, pero no figura en SPP` };
+    // Regla 1, 2 y 3 cumplidas:
+    // 1. NO TIENE CUSPP de 12 caracteres alfanuméricos (está en blanco, con 'X', 'NO REGISTRADO', etc.)
+    // 2. NO TIENE registro en la SBS
+    // 3. En PREVISIONA NO TIENE el valor "SNP" (incluso si en SIGA le pusieron PROFUTURO tentativo)
+    return { tone: 'sin_afiliacion', text: 'Sin afiliación previa' };
   }
 
   return { tone: 'sin_verificar', text: 'Pendiente de consulta' };

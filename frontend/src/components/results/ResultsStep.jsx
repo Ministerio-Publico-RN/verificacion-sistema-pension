@@ -10,7 +10,8 @@ import {
   Filter,
   RotateCw,
   Download,
-  FileText
+  FileText,
+  Info
 } from 'lucide-react';
 import { WorkersTable } from '../table/WorkersTable';
 import { ExportMenu } from '../common/ExportMenu';
@@ -256,6 +257,47 @@ export function ResultsStep({
             <span className="afp-chip">No Registrado: <strong>{afpBreakdown.noRegistrado}</strong></span>
           </div>
         )}
+      </div>
+
+      {/* Leyenda de Criterios de Clasificación Previsional */}
+      <div
+        className="mpfn-card mpfn-semaforo-legend-card"
+        style={{
+          padding: '12px 16px',
+          marginBottom: '16px',
+          background: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: '6px'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: '#0f172a', fontWeight: 600, fontSize: '12px' }}>
+          <Info size={15} color="#2563eb" />
+          <span>Criterios de Clasificación Previsional (Leyenda):</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '10px', fontSize: '11.5px', lineHeight: 1.45 }}>
+          <div style={{ background: '#ffffff', padding: '8px 12px', borderRadius: '4px', borderLeft: '3px solid #0284c7', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+              <UserPlus size={13} color="#0284c7" />
+              <strong style={{ color: '#0369a1' }}>Sin previa afiliación:</strong>
+            </div>
+            <span style={{ color: '#475569' }}>
+              1. <strong>No tiene registro en SBS</strong> (NO REGISTRADO).<br />
+              2. <strong>Sin CUSPP válido de 12 caracteres</strong> (en blanco, con 'X' o texto como 'NO REGISTRADO').<br />
+              3. En columna <strong>PREVISIONA no indica "SNP"</strong> (incluso si tiene AFP tentativa como Profuturo).
+            </span>
+          </div>
+
+          <div style={{ background: '#ffffff', padding: '8px 12px', borderRadius: '4px', borderLeft: '3px solid #7c3aed', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+              <ShieldCheck size={13} color="#7c3aed" />
+              <strong style={{ color: '#6d28d9' }}>Inscrito en SNP (ONP):</strong>
+            </div>
+            <span style={{ color: '#475569' }}>
+              1. <strong>No tiene registro en SBS</strong> (NO REGISTRADO).<br />
+              2. En columna <strong>PREVISIONA registra "SNP", "ONP" o código de ley "19990"</strong>.
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Tabla Completa con Filtros y Columnas Visibles */}
