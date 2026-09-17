@@ -33,7 +33,7 @@ export function Header({ onOpenHistory, onGoHome }) {
           <span className="mpfn-subtext">MINISTERIO PÚBLICO – FISCALÍA DE LA NACIÓN</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <h1 className="mpfn-maintitle" style={{ margin: 0 }}>Verificación del Sistema Previsional</h1>
-            <span className="mpfn-hco-tag">SISTEMAS HCO • v1.0.8</span>
+            <span className="mpfn-hco-tag">SISTEMAS HCO • v1.0.9</span>
           </div>
         </div>
       </div>

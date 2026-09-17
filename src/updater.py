@@ -14,7 +14,7 @@ import subprocess
 import threading
 from paths import is_frozen
 
-CURRENT_VERSION = "1.0.8"
+CURRENT_VERSION = "1.0.9"
 GITHUB_REPO = "Ministerio-Publico-RN/verificacion-sistema-pension"
 
 
@@ -220,7 +220,7 @@ Start-Sleep -Seconds 2
 
 Log-Msg "Lanzando nueva version de la aplicacion..."
 try {{
-    Start-Process -FilePath '{safe_exe_path}' -WorkingDirectory '{safe_exe_dir}'
+    Start-Process -FilePath '{safe_exe_path}' -WorkingDirectory '{safe_exe_dir}' -WindowStyle Normal
     Log-Msg "Nueva version lanzada exitosamente."
 }} catch {{
     Log-Msg "ERROR al lanzar nueva version: $_"

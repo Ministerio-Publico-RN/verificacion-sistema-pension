@@ -18,6 +18,11 @@ SRC_DIR = os.path.dirname(os.path.abspath(__file__))
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, 'w')
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, 'w')
+
 from paths import resource_path, data_path, is_frozen
 import browser_bootstrap  # debe ejecutarse antes de importar sbs_service (configura Playwright)
 

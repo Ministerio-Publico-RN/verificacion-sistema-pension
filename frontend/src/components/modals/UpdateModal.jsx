@@ -10,6 +10,7 @@ export function UpdateModal({ isOpen, onClose }) {
   const [countdown, setCountdown] = useState(5);
   const [reconnectAttempts, setReconnectAttempts] = useState(1);
   const [isReconnected, setIsReconnected] = useState(false);
+  const [reconnectFailed, setReconnectFailed] = useState(false);
 
   const handleCheck = useCallback(async () => {
     setStatus('checking');
@@ -49,6 +50,7 @@ export function UpdateModal({ isOpen, onClose }) {
     setCountdown(5);
     setReconnectAttempts(1);
     setIsReconnected(false);
+    setReconnectFailed(false);
 
     timer = setInterval(() => {
       counter -= 1;
@@ -73,8 +75,9 @@ export function UpdateModal({ isOpen, onClose }) {
             }, 1200);
           }
         } catch {
-          if (attempts >= 25) {
+          if (attempts >= 40) {
             clearInterval(pollInterval);
+            setReconnectFailed(true);
           }
         }
       }, 1500);
@@ -218,18 +221,26 @@ export function UpdateModal({ isOpen, onClose }) {
             <div style={{ textAlign: 'center', padding: '20px 10px' }}>
               {isReconnected ? (
                 <CheckCircle size={40} style={{ color: '#10b981', marginBottom: '14px' }} />
+              ) : reconnectFailed ? (
+                <AlertTriangle size={40} style={{ color: '#f59e0b', marginBottom: '14px' }} />
               ) : (
                 <RefreshCw size={40} className="mpfn-text-gold" style={{ animation: 'spin 1.2s linear infinite', marginBottom: '14px' }} />
               )}
               <h4 style={{ margin: '0 0 8px 0', color: 'var(--text-main)', fontSize: '1.05rem' }}>
-                {isReconnected ? '¡Sistema actualizado con éxito!' : '¡Descarga completada! Reiniciando...'}
+                {isReconnected
+                  ? '¡Sistema actualizado con éxito!'
+                  : reconnectFailed
+                    ? 'Actualización aplicada'
+                    : '¡Descarga completada! Reiniciando...'}
               </h4>
               <p style={{ margin: '0 0 16px 0', fontSize: '0.86rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
                 {isReconnected
-                  ? 'El nuevo ejecutable ya está activo. Recargando la ventana del navegador...'
-                  : countdown > 0
-                    ? `Reemplazando ejecutable y reiniciando el servicio en ${countdown} segundos...`
-                    : `Reconectando con el nuevo sistema... (intento ${reconnectAttempts})`
+                  ? 'El nuevo ejecutable ya está activo. Recargando la aplicación...'
+                  : reconnectFailed
+                    ? 'El archivo se actualizó correctamente. Si el sistema ya abrió en otra ventana o pestaña, puede cerrar esta ventana o pulsar Recargar ahora.'
+                    : countdown > 0
+                      ? `Reemplazando ejecutable y reiniciando el servicio en ${countdown} segundos...`
+                      : `Esperando inicio del nuevo sistema... (intento ${reconnectAttempts}/40)`
                 }
               </p>
 
@@ -241,15 +252,17 @@ export function UpdateModal({ isOpen, onClose }) {
                 >
                   Cerrar
                 </button>
-                <button
-                  type="button"
-                  className="mpfn-btn mpfn-btn-primary"
-                  onClick={() => window.location.reload()}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                >
-                  <RefreshCw size={14} />
-                  <span>Recargar ahora</span>
-                </button>
+                {(isReconnected || reconnectFailed) && (
+                  <button
+                    type="button"
+                    className="mpfn-btn mpfn-btn-primary"
+                    onClick={() => window.location.reload()}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <RefreshCw size={14} />
+                    <span>Recargar ahora</span>
+                  </button>
+                )}
               </div>
             </div>
           )}
