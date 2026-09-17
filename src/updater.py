@@ -14,7 +14,7 @@ import subprocess
 import threading
 from paths import is_frozen
 
-CURRENT_VERSION = "1.0.10"
+CURRENT_VERSION = "1.0.11"
 GITHUB_REPO = "Ministerio-Publico-RN/verificacion-sistema-pension"
 
 
