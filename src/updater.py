@@ -14,7 +14,7 @@ import subprocess
 import threading
 from paths import is_frozen
 
-CURRENT_VERSION = "1.0.6"
+CURRENT_VERSION = "1.0.7"
 GITHUB_REPO = "Ministerio-Publico-RN/verificacion-sistema-pension"
 
 
@@ -128,7 +128,12 @@ def apply_update(download_url=None):
     exe_dir = os.path.dirname(exe_path)
     exe_name = os.path.basename(exe_path)
     temp_new_exe = os.path.join(exe_dir, f"{exe_name}.update")
-    bat_path = os.path.join(exe_dir, "_updater_swap.bat")
+    safe_exe_path = exe_path.replace("'", "''")
+    safe_temp_exe = temp_new_exe.replace("'", "''")
+    safe_exe_dir = exe_dir.replace("'", "''")
+    safe_exe_name = exe_name.replace("'", "''")
+    log_path = os.path.join(exe_dir, "updater.log").replace("'", "''")
+    ps1_path = os.path.join(exe_dir, "_updater_swap.ps1")
 
     try:
         req = urllib.request.Request(
@@ -163,53 +168,72 @@ def apply_update(download_url=None):
     except Exception as e:
         return {'success': False, 'message': f"Error al validar archivo descargado: {e}"}
 
-    bat_content = f"""@echo off
-chcp 65001 > nul
-set LOG="%~dp0updater.log"
-echo [%date% %time%] Iniciando actualizador... > %LOG%
+    ps1_content = f"""# Script de reemplazo y reinicio automatico MPFN
+$ErrorActionPreference = 'SilentlyContinue'
+$log = '{log_path}'
 
-:: Esperar a que el proceso anterior comience su salida limpia
-timeout /t 2 /nobreak > nul
+function Log-Msg($msg) {{
+    $ts = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    "[$ts] $msg" | Out-File -FilePath $log -Append -Encoding utf8
+}}
 
-:: Asegurar terminacion de cualquier proceso residual con el mismo nombre
-taskkill /F /IM "{exe_name}" >> %LOG% 2>&1
+Log-Msg "Iniciando proceso de reemplazo y reinicio..."
+Start-Sleep -Seconds 2
 
-set ATTEMPTS=0
-:wait_loop
-set /a ATTEMPTS+=1
-del /F /Q "{exe_path}" >> %LOG% 2>&1
-if exist "{exe_path}" (
-    if %ATTEMPTS% GEQ 20 (
-        echo [%date% %time%] ERROR: Archivo {exe_name} sigue bloqueado tras 20 intentos. >> %LOG%
-        exit /b 1
-    )
-    echo [%date% %time%] Esperando liberacion de archivo (intento %ATTEMPTS%)... >> %LOG%
-    timeout /t 1 /nobreak > nul
-    goto wait_loop
-)
+# Detener cualquier proceso del ejecutable anterior
+$exeStem = [System.IO.Path]::GetFileNameWithoutExtension('{safe_exe_name}')
+Log-Msg "Asegurando detencion del proceso $exeStem..."
+Get-Process -Name $exeStem -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
-echo [%date% %time%] Moviendo archivo nuevo a {exe_path}... >> %LOG%
-move /Y "{temp_new_exe}" "{exe_path}" >> %LOG% 2>&1
-if not exist "{exe_path}" (
-    echo [%date% %time%] ERROR: No se pudo mover la actualizacion. >> %LOG%
-    exit /b 1
-)
+$attempts = 0
+while ($attempts -lt 25) {{
+    $attempts++
+    try {{
+        if (Test-Path '{safe_exe_path}') {{
+            Remove-Item -Path '{safe_exe_path}' -Force -ErrorAction Stop
+        }}
+        Log-Msg "Ejecutable anterior eliminado con exito."
+        break
+    }} catch {{
+        Log-Msg "Esperando liberacion de archivo (intento $attempts)..."
+        Start-Sleep -Seconds 1
+    }}
+}}
 
-:: Breve espera para asegurar que los sockets del puerto queden libres
-echo [%date% %time%] Esperando liberacion de sockets de red... >> %LOG%
-timeout /t 2 /nobreak > nul
+if (Test-Path '{safe_exe_path}') {{
+    Log-Msg "ERROR CRITICO: No se pudo eliminar el ejecutable anterior tras 25 intentos."
+    exit 1
+}}
 
-echo [%date% %time%] Lanzando nueva version... >> %LOG%
-cd /d "{exe_dir}"
-start "" /D "{exe_dir}" "{exe_path}"
-echo [%date% %time%] Proceso completado exitosamente. >> %LOG%
-timeout /t 1 /nobreak > nul
-del "%~f0"
+Log-Msg "Moviendo archivo descargado a {safe_exe_path}..."
+try {{
+    Move-Item -Path '{safe_temp_exe}' -Destination '{safe_exe_path}' -Force -ErrorAction Stop
+    Log-Msg "Archivo reemplazado exitosamente."
+}} catch {{
+    Log-Msg "ERROR al mover archivo nuevo: $_"
+    exit 1
+}}
+
+# Esperar a que los sockets de red se liberen totalmente
+Log-Msg "Esperando liberacion de puertos de red..."
+Start-Sleep -Seconds 2
+
+Log-Msg "Lanzando nueva version de la aplicacion..."
+try {{
+    Start-Process -FilePath '{safe_exe_path}' -WorkingDirectory '{safe_exe_dir}'
+    Log-Msg "Nueva version lanzada exitosamente."
+}} catch {{
+    Log-Msg "ERROR al lanzar nueva version: $_"
+    exit 1
+}}
+
+Start-Sleep -Seconds 1
+Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue
 """
 
     try:
-        with open(bat_path, 'w', encoding='utf-8') as f:
-            f.write(bat_content)
+        with open(ps1_path, 'w', encoding='utf-8') as f:
+            f.write(ps1_content)
     except Exception as e:
         return {'success': False, 'message': f"Error al preparar script de actualización: {e}"}
 
@@ -219,7 +243,13 @@ del "%~f0"
             flags |= subprocess.CREATE_NO_WINDOW
 
         subprocess.Popen(
-            ['cmd.exe', '/c', bat_path],
+            [
+                'powershell.exe',
+                '-NoProfile',
+                '-ExecutionPolicy', 'Bypass',
+                '-WindowStyle', 'Hidden',
+                '-File', ps1_path
+            ],
             cwd=exe_dir,
             creationflags=flags,
             close_fds=True
