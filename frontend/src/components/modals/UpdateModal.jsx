@@ -71,7 +71,7 @@ export function UpdateModal({ isOpen, onClose }) {
           {status === 'checking' && (
             <div style={{ textAlign: 'center', padding: '30px 10px' }}>
               <RefreshCw size={36} className="mpfn-text-gold" style={{ animation: 'spin 1s linear infinite', marginBottom: '16px' }} />
-              <p style={{ margin: 0, fontWeight: 600, color: 'var(--text-main)' }}>Buscando nuevas versiones en GitHub...</p>
+              <p style={{ margin: 0, fontWeight: 600, color: 'var(--text-main)' }}>Buscando nuevas versiones...</p>
               <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Verificando compatibilidad del ejecutable</span>
             </div>
           )}
