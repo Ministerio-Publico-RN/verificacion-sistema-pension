@@ -229,19 +229,15 @@ export async function exportCierreAltasWord(workers, onProgress) {
     throw new Error('No hay trabajadores para exportar.');
   }
 
-  // Contenedor temporal en el viewport (z-index -9999) para que Chromium mantenga aceleración gráfica
-  // activa y no pause el renderizado cuando la persona usuaria cambia de pantalla o ventana.
+  // Contenedor temporal aislado fuera de la vista para renderizado de fichas en alta fidelidad
   const container = document.createElement('div');
   container.id = 'sbs-ficha-word-renderer';
   container.style.position = 'fixed';
-  container.style.left = '0';
+  container.style.left = '-9999px';
   container.style.top = '0';
   container.style.width = '712px';
-  container.style.overflow = 'hidden';
   container.style.background = '#ffffff';
   container.style.zIndex = '-9999';
-  container.style.pointerEvents = 'none';
-  container.style.opacity = '0.01'; // Permanece como capa activa para Chromium sin ser visible al usuario
   container.style.boxSizing = 'border-box';
   document.body.appendChild(container);
 
