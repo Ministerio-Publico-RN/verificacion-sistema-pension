@@ -271,10 +271,9 @@ export async function exportCierreAltasWord(workers, onProgress) {
         `${worker.ape_paterno || worker.paterno || ''} ${worker.ape_materno || worker.materno || ''}, ${worker.nombres || worker.primer_nombre || ''}`
       ).trim().toUpperCase();
 
-      // Dimensiones para la hoja Word: Ocupa exactamente todo el ancho útil de la página (712px)
-      // entre los márgenes laterales fijados en 600 dxa (~15mm)
-      const imgWidth = 712;
-      const imgHeight = Math.round(712 * (canvas.height / canvas.width));
+      // Dimensiones para la hoja Word: Reducido al 85% del ancho (605px) para asegurar 2 fichas por página A4
+      const imgWidth = 605;
+      const imgHeight = Math.round(605 * (canvas.height / canvas.width));
 
       // Nombre y DNI en la misma línea, con salto de página cada 2 trabajadores
       children.push(
@@ -284,33 +283,33 @@ export async function exportCierreAltasWord(workers, onProgress) {
             new TextRun({
               text: `Nombre: `,
               bold: true,
-              size: 21, // ~10.5pt
+              size: 20, // ~10pt
               font: 'Calibri',
               color: '0F172A'
             }),
             new TextRun({
               text: `${workerName}   —   `,
               bold: true,
-              size: 21,
+              size: 20,
               font: 'Calibri',
               color: '0F172A'
             }),
             new TextRun({
               text: `DNI: `,
               bold: true,
-              size: 21,
+              size: 20,
               font: 'Calibri',
               color: '2563EB'
             }),
             new TextRun({
               text: `${worker.dni || '-'}`,
               bold: true,
-              size: 21,
+              size: 20,
               font: 'Calibri',
               color: '2563EB'
             })
           ],
-          spacing: { before: (i % 2 === 0) ? 0 : 120, after: 50 }
+          spacing: { before: (i % 2 === 0) ? 0 : 80, after: 30 }
         }),
         new Paragraph({
           alignment: AlignmentType.CENTER,
@@ -323,7 +322,7 @@ export async function exportCierreAltasWord(workers, onProgress) {
               }
             })
           ],
-          spacing: { after: 100 }
+          spacing: { after: (i % 2 === 0) ? 60 : 40 }
         })
       );
     }
