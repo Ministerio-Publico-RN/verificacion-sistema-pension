@@ -14,7 +14,7 @@ import subprocess
 import threading
 from paths import is_frozen
 
-CURRENT_VERSION = "1.0.3"
+CURRENT_VERSION = "1.0.5"
 GITHUB_REPO = "Ministerio-Publico-RN/verificacion-sistema-pension"
 
 
@@ -165,19 +165,45 @@ def apply_update(download_url=None):
 
     bat_content = f"""@echo off
 chcp 65001 > nul
-echo Aplicando actualizacion de Verificacion Previsional MPFN...
+set LOG="%~dp0updater.log"
+echo [%date% %time%] Iniciando actualizador... > %LOG%
+
+:: Esperar a que el proceso anterior comience su salida limpia
 timeout /t 2 /nobreak > nul
 
+:: Asegurar terminacion de cualquier proceso residual con el mismo nombre
+taskkill /F /IM "{exe_name}" >> %LOG% 2>&1
+
+set ATTEMPTS=0
 :wait_loop
-taskkill /F /IM "{exe_name}" > nul 2>&1
-del "{exe_path}" > nul 2>&1
+set /a ATTEMPTS+=1
+del /F /Q "{exe_path}" >> %LOG% 2>&1
 if exist "{exe_path}" (
+    if %ATTEMPTS% GEQ 20 (
+        echo [%date% %time%] ERROR: Archivo {exe_name} sigue bloqueado tras 20 intentos. >> %LOG%
+        exit /b 1
+    )
+    echo [%date% %time%] Esperando liberacion de archivo (intento %ATTEMPTS%)... >> %LOG%
     timeout /t 1 /nobreak > nul
     goto wait_loop
 )
 
-move /y "{temp_new_exe}" "{exe_path}" > nul
-start "" "{exe_path}"
+echo [%date% %time%] Moviendo archivo nuevo a {exe_path}... >> %LOG%
+move /Y "{temp_new_exe}" "{exe_path}" >> %LOG% 2>&1
+if not exist "{exe_path}" (
+    echo [%date% %time%] ERROR: No se pudo mover la actualizacion. >> %LOG%
+    exit /b 1
+)
+
+:: Breve espera para asegurar que los sockets del puerto queden libres
+echo [%date% %time%] Esperando liberacion de sockets de red... >> %LOG%
+timeout /t 2 /nobreak > nul
+
+echo [%date% %time%] Lanzando nueva version... >> %LOG%
+cd /d "{exe_dir}"
+start "" /D "{exe_dir}" "{exe_path}"
+echo [%date% %time%] Proceso completado exitosamente. >> %LOG%
+timeout /t 1 /nobreak > nul
 del "%~f0"
 """
 
@@ -189,13 +215,12 @@ del "%~f0"
 
     try:
         flags = 0
-        if hasattr(subprocess, 'DETACHED_PROCESS'):
-            flags |= subprocess.DETACHED_PROCESS
         if hasattr(subprocess, 'CREATE_NO_WINDOW'):
             flags |= subprocess.CREATE_NO_WINDOW
 
         subprocess.Popen(
             ['cmd.exe', '/c', bat_path],
+            cwd=exe_dir,
             creationflags=flags,
             close_fds=True
         )

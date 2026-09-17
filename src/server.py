@@ -39,6 +39,7 @@ ACTIVE_STATE = {
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
+    allow_reuse_address = True
 
 class AppRequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -525,7 +526,20 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
 def run_server(port=8080, open_browser=False):
     os.makedirs(WEB_DIR, exist_ok=True)
     server_address = ('127.0.0.1', port)
-    httpd = ThreadedHTTPServer(server_address, AppRequestHandler)
+    
+    httpd = None
+    import time
+    for attempt in range(1, 11):
+        try:
+            httpd = ThreadedHTTPServer(server_address, AppRequestHandler)
+            break
+        except OSError as e:
+            if attempt < 10:
+                print(f"Puerto {port} ocupado o socket previo cerrando, reintentando en 500ms ({attempt}/10)...")
+                time.sleep(0.5)
+            else:
+                raise e
+
     print(f"===========================================================")
     print(f"  SISTEMA DE VERIFICACIÓN PREVISIONAL - MPFN")
     print(f"  Servidor local activo en: http://localhost:{port}")
