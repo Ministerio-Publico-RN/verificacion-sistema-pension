@@ -168,16 +168,16 @@ export function ResultsStep({
               type="button"
             >
               <Download size={15} />
-              <span>Descargar Reporte Afiliación ({sinAfiliacion})</span>
+              <span>Reporte Afiliación ({sinAfiliacion})</span>
             </button>
 
-            {/* Botón Reporte Cierre de Altas (Word con Ficha SBS) */}
+            {/* Botón Reporte del SPP (SBS) (Word con Ficha SBS) */}
             {onExportCierreAltas && (
               <button
                 className="mpfn-btn-primary mpfn-btn-cierre-altas"
                 onClick={onExportCierreAltas}
                 disabled={isExportingCierreAltas}
-                title="Descargar documento Word de Cierre de Altas con Nombre, DNI y foto de su ficha SBS"
+                title="Descargar documento Word del SPP (SBS) con Nombre, DNI y foto de su ficha SBS"
                 type="button"
                 style={{
                   backgroundColor: '#2b579a',
@@ -188,7 +188,7 @@ export function ResultsStep({
                 <span>
                   {isExportingCierreAltas
                     ? `Generando Word (${cierreAltasProgress})...`
-                    : 'Reporte Cierre de Altas'}
+                    : 'Reporte del SPP (SBS)'}
                 </span>
               </button>
             )}

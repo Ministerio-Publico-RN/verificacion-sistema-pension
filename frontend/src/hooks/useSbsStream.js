@@ -68,6 +68,17 @@ export function useSbsStream({ onWorkerUpdate, onLog }) {
     setStatus(completed ? 'completed' : 'stopped');
   }, []);
 
+  const resetProgress = useCallback(() => {
+    isCancelledRef.current = false;
+    isPausedRef.current = false;
+    setProgress({ current: 0, total: 0, percent: 0 });
+    setElapsedSeconds(0);
+    setStatus('idle');
+    setInProgressDnis(new Set());
+    setAttemptCounts({});
+    setCaptchaAlert(null);
+  }, []);
+
   const reloadConfig = useCallback(async () => {
     try {
       const cfg = await getSbsConfig();
@@ -293,6 +304,7 @@ export function useSbsStream({ onWorkerUpdate, onLog }) {
     toggleHeadless,
     reloadConfig,
     hydrateProgress,
+    resetProgress,
     elapsedSeconds,
     formattedTime,
     inProgressDnis,

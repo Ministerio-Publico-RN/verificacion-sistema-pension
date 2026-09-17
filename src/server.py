@@ -28,6 +28,7 @@ from siga_parser import SigaParser
 from sbs_service import get_sbs_service
 from afpnet_service import AfpnetParser, AfpnetGenerator, get_afpnet_service
 import db
+import updater
 
 db.init_db()
 
@@ -88,6 +89,8 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             self.handle_afpnet_download_template(parsed.query)
         elif path == '/api/afpnet/batches-info':
             self.handle_afpnet_batches_info()
+        elif path == '/api/app/check-update':
+            self.send_json(updater.check_for_updates())
         else:
             # Servir archivos estáticos desde WEB_DIR
             super().do_GET()
@@ -120,6 +123,8 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             self.handle_execution_create()
         elif re.match(r'^/api/executions/(\d+)/status$', path):
             self.handle_execution_status(int(re.match(r'^/api/executions/(\d+)/status$', path).group(1)))
+        elif path == '/api/app/apply-update':
+            self.handle_apply_update()
         else:
             self.send_error(404, "Endpoint no encontrado")
 
@@ -131,6 +136,17 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             self.handle_execution_delete(int(exec_match.group(1)))
         else:
             self.send_error(404, "Endpoint no encontrado")
+
+    def handle_apply_update(self):
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else '{}'
+            params = json.loads(body) if body else {}
+            download_url = params.get('download_url')
+            res = updater.apply_update(download_url)
+            self.send_json(res)
+        except Exception as e:
+            self.send_json({'success': False, 'message': f"Error al aplicar actualización: {str(e)}"}, status=500)
 
     def handle_executions_list(self):
         try:

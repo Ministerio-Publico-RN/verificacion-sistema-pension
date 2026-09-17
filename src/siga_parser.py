@@ -397,6 +397,39 @@ class SigaParser:
                     if cuspp_siga:
                         break
 
+        email = (
+            clean_raw.get('DIRE_EMAI_') or
+            clean_raw.get('DIRE_EMAI') or
+            clean_raw.get('EMAIL_MPFN') or
+            clean_raw.get('EMAIL') or
+            clean_raw.get('CORREO') or
+            clean_raw.get('CORREO_ELECTRONICO') or ''
+        )
+        if not email:
+            for k, v in clean_raw.items():
+                if k.startswith('COL_'): continue
+                k_clean = k.replace('_', ' ').replace('.', '').strip()
+                if any(phrase in k_clean for phrase in ['EMAI', 'CORREO', 'MAIL']):
+                    email = str(v).strip()
+                    if email:
+                        break
+
+        celular = (
+            clean_raw.get('CELULAR') or
+            clean_raw.get('NUM_CELULAR') or
+            clean_raw.get('TELEFONO') or
+            clean_raw.get('MOVIL') or
+            clean_raw.get('TEL_MOVIL') or ''
+        )
+        if not celular:
+            for k, v in clean_raw.items():
+                if k.startswith('COL_'): continue
+                k_clean = k.replace('_', ' ').replace('.', '').strip()
+                if any(phrase in k_clean for phrase in ['CELULAR', 'TELEFONO', 'MOVIL', 'CEL']):
+                    celular = str(v).strip()
+                    if celular:
+                        break
+
         return {
             'dni': dni,
             'nombre_completo': nombre_completo,
@@ -406,6 +439,8 @@ class SigaParser:
             'primer_nombre': primer_nombre,
             'segundo_nombre': segundo_nombre,
             'fecha_nacimiento': fecha_nac,
+            'email': email.strip(),
+            'celular': celular.strip(),
             'previsiona_siga': previsiona_siga,
             'regimen_siga': regimen_siga,
             'previsional_siga': previsional_siga,

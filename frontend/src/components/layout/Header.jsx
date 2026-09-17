@@ -1,13 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import insigniaImg from '../../assets/mp-insignia-gold.png';
-import { Moon, Sun, History, Home } from 'lucide-react';
+import { Moon, Sun, History, Home, ArrowUpCircle } from 'lucide-react';
+import { UpdateModal } from '../modals/UpdateModal';
+import { checkAppUpdate } from '../../api/updateApi';
 
 export function Header({ onOpenHistory, onGoHome }) {
   const [theme, setTheme] = useState('light');
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [hasUpdateBadge, setHasUpdateBadge] = useState(false);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    checkAppUpdate().then(res => {
+      if (res?.has_update) {
+        setHasUpdateBadge(true);
+      }
+    }).catch(() => {});
+  }, []);
 
   const toggleTheme = () => {
     setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
@@ -50,6 +62,33 @@ export function Header({ onOpenHistory, onGoHome }) {
           </button>
         )}
         <button
+          className="mpfn-theme-btn mpfn-history-btn"
+          onClick={() => {
+            setIsUpdateModalOpen(true);
+            setHasUpdateBadge(false);
+          }}
+          title="Buscar actualizaciones del sistema"
+          type="button"
+          style={{ position: 'relative' }}
+        >
+          <ArrowUpCircle size={16} />
+          <span>Actualizaciones</span>
+          {hasUpdateBadge && (
+            <span
+              style={{
+                position: 'absolute',
+                top: '-3px',
+                right: '-3px',
+                width: '9px',
+                height: '9px',
+                borderRadius: '50%',
+                backgroundColor: '#10b981',
+                boxShadow: '0 0 0 2px var(--bg-primary)'
+              }}
+            />
+          )}
+        </button>
+        <button
           className="mpfn-theme-btn"
           onClick={toggleTheme}
           title={`Cambiar a tema ${theme === 'light' ? 'oscuro' : 'claro'}`}
@@ -58,6 +97,11 @@ export function Header({ onOpenHistory, onGoHome }) {
           {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
         </button>
       </div>
+
+      <UpdateModal
+        isOpen={isUpdateModalOpen}
+        onClose={() => setIsUpdateModalOpen(false)}
+      />
     </header>
   );
 }

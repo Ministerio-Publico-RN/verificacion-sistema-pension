@@ -71,6 +71,8 @@ export function WorkersTable({
               {visibleColumns.afpnet === true && <th className="col-afpnet">Consulta AFPNet</th>}
               {visibleColumns.nacim === true && <th className="col-nacim">Fecha Nacimiento <SigaTag /></th>}
               {visibleColumns.cargo === true && <th className="col-cargo">Cargo <SigaTag /></th>}
+              {visibleColumns.email === true && <th className="col-email">Correo <SigaTag /></th>}
+              {visibleColumns.celular === true && <th className="col-celular">Celular <SigaTag /></th>}
               {visibleColumns.origen === true && <th className="col-origen">Origen <SigaTag /></th>}
               <th className="col-actions">Acción</th>
             </tr>

@@ -14,6 +14,7 @@ import threading
 import subprocess
 import json
 import random
+import unicodedata
 from datetime import datetime
 
 
@@ -33,19 +34,52 @@ SBS_URL = "https://servicios.sbs.gob.pe/ReporteSituacionPrevisional/Afil_Consult
 MPFN_KILL_MARKER = "mpfn-sbs-verificacion-marker"
 
 
+def sanitize_sbs_name(name_str):
+    """
+    Sanitiza nombres y apellidos para el formulario del portal SBS:
+    1. Resuelve posibles errores de mojibake (caracteres corruptos).
+    2. Elimina apóstrofes, comillas y diacríticos (ej: "PIER'S" -> "PIERS", "O'NEILL" -> "ONEILL").
+    3. Reemplaza vocales con diéresis o tildes por su letra base (ej: "AGÜERO" -> "AGUERO", "PIËR" -> "PIER").
+    4. Preserva la letra 'Ñ' y elimina caracteres no alfabéticos que rechace el validador cliente de la SBS.
+    """
+    if not name_str:
+        return ''
+    s = str(name_str).strip()
+    # Eliminar apóstrofes, comillas, acentos graves, circunflejos y símbolos de diéresis flotantes
+    s = re.sub(r"['\"`’‘´^¨]", "", s)
+    # Proteger Ñ antes de la descomposición canónica de tildes
+    s = s.replace('Ñ', '__ENE_MAY__').replace('ñ', '__ene_min__')
+    # Descomponer caracteres acentuados o con diéresis (NFD) y filtrar diacríticos
+    s = unicodedata.normalize('NFD', s)
+    s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+    # Restaurar Ñ
+    s = s.replace('__ENE_MAY__', 'Ñ').replace('__ene_min__', 'Ñ')
+    # Aplicar resolución de mojibake residual
+    s = clean_mojibake(s)
+    # Permitir solo letras A-Z, Ñ y espacios (eliminar números o símbolos no alfabéticos)
+    s = re.sub(r"[^A-Za-zÑ\s]", " ", s)
+    # Normalizar espacios múltiples
+    s = re.sub(r"\s+", " ", s).strip()
+    return s.upper()
+
+
 def kill_marked_chromium():
     """Cierra de inmediato, a nivel de sistema operativo, todos los procesos chrome.exe
-    lanzados por este servicio (identificados por MPFN_KILL_MARKER), sin esperar a que
-    Playwright detecte la desconexión por sus propios tiempos de espera internos."""
+    lanzados por este servicio (identificados por MPFN_KILL_MARKER).
+    Utiliza -EncodedCommand (Base64 UTF-16LE) para evitar fallos de comillas en Windows."""
+    if sys.platform != 'win32':
+        return
     try:
-        ps_cmd = (
-            "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" -ErrorAction SilentlyContinue | "
-            f"Where-Object {{ $_.CommandLine -like '*{MPFN_KILL_MARKER}*' }} | "
+        import base64
+        ps_script = (
+            "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | "
+            f"Where-Object {{ $_.Name -eq 'chrome.exe' -and $_.CommandLine -like '*{MPFN_KILL_MARKER}*' }} | "
             "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
         )
+        b64 = base64.b64encode(ps_script.encode('utf-16le')).decode('ascii')
         subprocess.run(
-            ['powershell', '-NoProfile', '-NonInteractive', '-Command', ps_cmd],
-            timeout=6, capture_output=True
+            ['powershell', '-NoProfile', '-NonInteractive', '-EncodedCommand', b64],
+            timeout=8, capture_output=True
         )
     except Exception as e:
         print(f"[SBSServiceManager] Error al forzar cierre de ventanas Chromium: {e}")
@@ -54,20 +88,21 @@ def kill_marked_chromium():
 def send_marked_windows_to_back():
     """En modo 'Ventana Visible', evita que las ventanas del bot SBS se antepongan a las
     ventanas con las que el usuario está trabajando en ese momento: las manda al fondo del
-    z-order de Windows sin robarles el foco (SWP_NOACTIVATE), en vez de abrirse por encima
-    de todo como hace Chrome por defecto al crear una ventana nueva."""
+    z-order de Windows sin robarles el foco (SWP_NOACTIVATE)."""
     if sys.platform != 'win32':
         return
     try:
         import ctypes
+        import base64
 
-        ps_cmd = (
-            "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" -ErrorAction SilentlyContinue | "
-            f"Where-Object {{ $_.CommandLine -like '*{MPFN_KILL_MARKER}*' }} | "
+        ps_script = (
+            "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | "
+            f"Where-Object {{ $_.Name -eq 'chrome.exe' -and $_.CommandLine -like '*{MPFN_KILL_MARKER}*' }} | "
             "Select-Object -ExpandProperty ProcessId"
         )
+        b64 = base64.b64encode(ps_script.encode('utf-16le')).decode('ascii')
         result = subprocess.run(
-            ['powershell', '-NoProfile', '-NonInteractive', '-Command', ps_cmd],
+            ['powershell', '-NoProfile', '-NonInteractive', '-EncodedCommand', b64],
             timeout=6, capture_output=True, text=True
         )
         pids = {int(p) for p in result.stdout.split() if p.strip().isdigit()}
@@ -442,10 +477,10 @@ class SBSWorkerThread(threading.Thread):
 
     def _execute_query(self, params, retry_count=0):
         dni = params.get('dni', '').strip()
-        ape_pat = clean_mojibake(params.get('ape_paterno', ''))
-        ape_mat = clean_mojibake(params.get('ape_materno', ''))
-        primer_nom = clean_mojibake(params.get('primer_nombre', ''))
-        segundo_nom = clean_mojibake(params.get('segundo_nombre', ''))
+        ape_pat = sanitize_sbs_name(params.get('ape_paterno', ''))
+        ape_mat = sanitize_sbs_name(params.get('ape_materno', ''))
+        primer_nom = sanitize_sbs_name(params.get('primer_nombre', ''))
+        segundo_nom = sanitize_sbs_name(params.get('segundo_nombre', ''))
 
         max_retries = getattr(self.manager, 'max_retries', 25) if self.manager else 25
 
@@ -1064,6 +1099,10 @@ class SBSServiceManager:
         # worker (por si acaso), y limpieza de referencias
         with self._lock:
             for w in self.workers:
+                try:
+                    w.close_browser()
+                except Exception:
+                    pass
                 try:
                     if w.playwright and hasattr(w.playwright, '_impl_obj'):
                         proc = getattr(w.playwright._impl_obj._connection._transport, '_proc', None)

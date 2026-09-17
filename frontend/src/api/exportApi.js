@@ -121,8 +121,8 @@ export function exportAfiliacionReport(workers = []) {
     }
 
     const fecNac = (w.fecha_nacimiento || '').trim();
-    const email = (w.email || w.correo || w.raw_data?.EMAIL || w.raw_data?.CORREO || '').trim();
-    const telMovil = (w.celular || w.telefono || w.raw_data?.CELULAR || w.raw_data?.TELEFONO || '').trim();
+    const email = (w.email || w.raw_data?.DIRE_EMAI_ || w.raw_data?.DIRE_EMAI || w.correo || w.raw_data?.EMAIL_MPFN || w.raw_data?.EMAIL || w.raw_data?.CORREO || '').trim();
+    const telMovil = (w.celular || w.raw_data?.CELULAR || w.telefono || w.raw_data?.TELEFONO || w.raw_data?.MOVIL || '').trim();
     const ubigeo = (w.ubigeo || w.raw_data?.UBIGEO || '').trim();
 
     return `   <Row>

@@ -182,6 +182,18 @@ export function WorkerRow({ worker, onSelectWorker, onRetryWorker, visibleColumn
         <td className="col-cargo text-muted">{worker.cargo || '-'}</td>
       )}
 
+      {visibleColumns.email === true && (
+        <td className="col-email text-muted" title={worker.email || '-'}>
+          {worker.email || '-'}
+        </td>
+      )}
+
+      {visibleColumns.celular === true && (
+        <td className="col-celular font-mono text-muted">
+          {worker.celular || '-'}
+        </td>
+      )}
+
       {visibleColumns.origen === true && (
         <td className="col-origen text-muted">{worker.origen_planilla || '-'}</td>
       )}

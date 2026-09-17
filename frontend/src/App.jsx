@@ -85,6 +85,7 @@ export function App() {
   });
 
   const startExecution = useCallback(async (tipo, archivos, workersData, name, meta) => {
+    sbs.resetProgress();
     setWorkersData(workersData, name, meta);
     setMode(tipo);
     setCurrentStep(2);
@@ -99,7 +100,7 @@ export function App() {
         type: 'warning'
       });
     }
-  }, [setWorkersData, addLog]);
+  }, [setWorkersData, addLog, sbs]);
 
   const handleDataLoaded = (data, name, meta) => {
     startExecution('altas', [{ origen: null, filename: name, total: data.length }], data, name, meta);
@@ -115,6 +116,7 @@ export function App() {
     if (executionId) {
       updateExecutionStatus(executionId, 'completado').catch(() => {});
     }
+    sbs.resetProgress();
     clearWorkers();
     setExecutionId(null);
     setCurrentStep(1);
@@ -130,6 +132,7 @@ export function App() {
     if (sbs.status === 'running' || sbs.status === 'paused') {
       sbs.stopScraping();
     }
+    sbs.resetProgress();
     clearWorkers();
     setExecutionId(null);
     setMode(null);

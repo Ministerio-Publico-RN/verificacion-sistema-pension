@@ -40,6 +40,8 @@ export function WorkerDetailModal({ worker, onClose }) {
               <div><strong>Fecha Afiliación:</strong> <span className="font-mono">{worker.afiliacion_siga || worker.fecha_afiliacion_siga || worker.fecha_afiliacion || '-'}</span></div>
               <div><strong>CUSPP:</strong> <span className="font-mono">{worker.cuspp_siga || worker.cuspp || 'Sin CUSPP'}</span></div>
               <div><strong>Fecha Nacimiento:</strong> {worker.fecha_nacimiento || '-'}</div>
+              <div><strong>Correo:</strong> {worker.email || '-'}</div>
+              <div><strong>Celular:</strong> {worker.celular || '-'}</div>
               <div><strong>Cargo / Área:</strong> {worker.cargo || worker.dependencia || '-'}</div>
             </div>
           </div>

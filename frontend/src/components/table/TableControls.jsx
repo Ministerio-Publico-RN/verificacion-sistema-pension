@@ -35,6 +35,8 @@ export function TableControls({
     { key: 'afpnet', label: 'Consulta AFPNet' },
     { key: 'nacim', label: 'Fecha Nacimiento' },
     { key: 'cargo', label: 'Cargo / Dependencia' },
+    { key: 'email', label: 'Correo (DIRE_EMAI_)' },
+    { key: 'celular', label: 'Celular' },
     { key: 'origen', label: 'Origen (Planilla PEA)' }
   ];
 
