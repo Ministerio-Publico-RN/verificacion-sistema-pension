@@ -1733,9 +1733,6 @@ body {
   border-color: var(--mpfn-navy);
 }
 
-.result-card-valid {
-  border-left: 4px solid var(--color-success);
-}
 .result-card-valid .result-card-icon-wrap {
   background: rgba(16, 185, 129, 0.12);
   color: var(--color-success);
@@ -1748,9 +1745,6 @@ body {
   border-color: var(--color-success);
 }
 
-.result-card-alert {
-  border-left: 4px solid var(--color-warning);
-}
 .result-card-alert .result-card-icon-wrap {
   background: rgba(245, 158, 11, 0.12);
   color: var(--color-warning);
@@ -1763,9 +1757,6 @@ body {
   border-color: var(--color-warning);
 }
 
-.result-card-error {
-  border-left: 4px solid var(--color-danger);
-}
 .result-card-error .result-card-icon-wrap {
   background: rgba(239, 68, 68, 0.12);
   color: var(--color-danger);
@@ -1778,9 +1769,6 @@ body {
   border-color: var(--color-danger);
 }
 
-.result-card-neutral {
-  border-left: 4px solid #0284c7;
-}
 .result-card-neutral .result-card-icon-wrap {
   background: rgba(2, 132, 199, 0.12);
   color: #0284c7;
@@ -1793,9 +1781,6 @@ body {
   border-color: #0284c7;
 }
 
-.result-card-snp {
-  border-left: 4px solid #6366f1;
-}
 .result-card-snp .result-card-icon-wrap {
   background: rgba(99, 102, 241, 0.12);
   color: #6366f1;
