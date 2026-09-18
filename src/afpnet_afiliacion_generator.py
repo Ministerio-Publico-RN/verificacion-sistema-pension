@@ -172,9 +172,11 @@ def worker_to_row(w):
 
 def generate_afiliacion_excel(workers, output_path=None):
     """
-    Genera el archivo .xls en formato oficial Carga_Masiva_Ejemplo_Empl.xls
-    insertando los trabajadores en la hoja 'Excel' a partir de la fila 4.
-    Utiliza manipulación directa con xlrd y xlutils sin dependencias de PowerShell ni Excel.
+    Genera el archivo .xls en formato oficial para Afiliación Masiva en AFPnet.
+    En la primera hoja 'Excel', elimina las filas 1 y 3 del modelo original:
+    - Fila 1 (índice 0): Cabeceras oficiales (las 18 columnas).
+    - Fila 2 (índice 1) en adelante: Datos de los trabajadores.
+    Mantiene intactas las otras 4 hojas oficiales de referencia (Texto, Ubigeos, Tipo Vía, Tipo Localidad).
     """
     if not workers:
         raise ValueError("No hay trabajadores para generar el reporte de afiliación.")
@@ -208,25 +210,42 @@ def generate_afiliacion_excel(workers, output_path=None):
         output_path = os.path.join(uploads_dir, f"Carga_Masiva_Afiliacion_AFPnet_{timestamp}.xls")
     output_path = os.path.abspath(output_path)
 
-    # 3. Leer la plantilla preservando todas sus 5 hojas y formatos
+    # 3. Leer la plantilla oficial
     import xlrd
-    from xlutils.copy import copy
+    import xlwt
 
     rb = xlrd.open_workbook(template_path, formatting_info=True)
-    wb = copy(rb)
-    sheet = wb.get_sheet(0)
+    wb = xlwt.Workbook(encoding='utf-8')
 
-    # 4. Insertar filas de trabajadores a partir de la fila 4 (índice 3 en base cero)
+    # 4. Crear la hoja 'Excel' limpia (sin filas 1 y 3 de guía)
+    s0 = wb.add_sheet('Excel')
+    src_sheet0 = rb.sheet_by_index(0)
+
+    # Fila 1 (índice 0): Encabezados oficiales de las 18 columnas (extraídos de la fila 2 del modelo)
+    headers = [src_sheet0.cell_value(1, c) for c in range(18)]
+    for col_idx, h in enumerate(headers):
+        s0.write(0, col_idx, str(h) if h is not None else '')
+
+    # Fila 2 (índice 1) en adelante: Registros de trabajadores
     for row_idx, w in enumerate(workers):
-        target_row = 3 + row_idx
+        target_row = 1 + row_idx
         row_cells = worker_to_row(w)
         for col_idx, val in enumerate(row_cells):
-            sheet.write(target_row, col_idx, str(val) if val is not None else '')
+            s0.write(target_row, col_idx, str(val) if val is not None else '')
 
-    # 5. Guardar archivo final
+    # 5. Copiar las otras 4 hojas de referencia tal cual están en la plantilla original
+    for sheet_idx in range(1, rb.nsheets):
+        src_sheet = rb.sheet_by_index(sheet_idx)
+        dst_sheet = wb.add_sheet(src_sheet.name)
+        for r in range(src_sheet.nrows):
+            for c in range(src_sheet.ncols):
+                dst_sheet.write(r, c, src_sheet.cell_value(r, c))
+
+    # 6. Guardar archivo final
     wb.save(output_path)
 
     if not os.path.exists(output_path) or os.path.getsize(output_path) < 1000:
         raise RuntimeError("El archivo generado no es válido o está vacío.")
 
     return output_path
+
