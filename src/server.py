@@ -160,7 +160,11 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
 
     def handle_finalize_update(self):
         try:
-            res = updater.finalize_and_exit()
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else '{}'
+            params = json.loads(body) if body else {}
+            relaunch = bool(params.get('relaunch', False))
+            res = updater.finalize_and_exit(relaunch=relaunch)
             self.send_json(res)
         except Exception as e:
             self.send_json({'success': False, 'message': f"Error al finalizar actualización: {str(e)}"}, status=500)

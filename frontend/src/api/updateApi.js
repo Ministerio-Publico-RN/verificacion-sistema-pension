@@ -11,8 +11,9 @@ export async function applyAppUpdate(downloadUrl = null) {
   });
 }
 
-export async function finalizeAppUpdate() {
+export async function finalizeAppUpdate(options = {}) {
   return await apiRequest('/api/app/finalize-update', {
-    method: 'POST'
+    method: 'POST',
+    body: JSON.stringify(options)
   });
 }

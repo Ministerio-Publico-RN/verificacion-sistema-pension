@@ -14,7 +14,10 @@ export function UpdateModal({ isOpen, onClose }) {
     try {
       const res = await checkAppUpdate();
       setUpdateInfo(res);
-      if (res.has_update) {
+      if (res.error && !res.has_update) {
+        setErrorMsg(`No se pudo verificar en GitHub: ${res.error}`);
+        setStatus('error');
+      } else if (res.has_update) {
         setStatus('available');
       } else {
         setStatus('up_to_date');
@@ -68,13 +71,26 @@ export function UpdateModal({ isOpen, onClose }) {
     }
   };
 
-  const handleFinalize = async () => {
+  const handleFinalize = async (relaunch = false) => {
     setStatus('closing');
     try {
-      await finalizeAppUpdate();
+      await finalizeAppUpdate({ relaunch });
     } catch {
-      // El backend cierra el proceso de inmediato, es esperado que la conexion se corte
+      // El backend cierra el proceso
     }
+    setTimeout(() => {
+      try {
+        window.open('', '_self', '');
+        window.close();
+      } catch (_) {}
+    }, 1200);
+  };
+
+  const handleCloseTab = () => {
+    try {
+      window.open('', '_self', '');
+      window.close();
+    } catch (_) {}
   };
 
   return (
@@ -180,25 +196,27 @@ export function UpdateModal({ isOpen, onClose }) {
                 ¡Actualización descargada con éxito!
               </h4>
               <p style={{ margin: '0 0 16px 0', fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>
-                La nueva versión se descargó y verificó correctamente. Para aplicar los cambios, cierre la aplicación usando el botón de abajo y vuelva a abrir el archivo ejecutable.
+                La nueva versión se descargó y verificó correctamente. Elija una opción para aplicar los cambios:
               </p>
 
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '18px' }}>
-                <button
-                  type="button"
-                  className="mpfn-btn mpfn-btn-secondary"
-                  onClick={onClose}
-                >
-                  Hacerlo más tarde
-                </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '18px', maxWidth: '340px', margin: '18px auto 0' }}>
                 <button
                   type="button"
                   className="mpfn-btn mpfn-btn-primary"
-                  onClick={handleFinalize}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', backgroundColor: '#dc2626', borderColor: '#dc2626', color: '#ffffff' }}
+                  onClick={() => handleFinalize(true)}
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px 16px', fontWeight: 600 }}
+                >
+                  <RefreshCw size={16} />
+                  <span>Reiniciar y aplicar ahora</span>
+                </button>
+                <button
+                  type="button"
+                  className="mpfn-btn mpfn-btn-secondary"
+                  onClick={() => handleFinalize(false)}
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '8px 16px', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.4)' }}
                 >
                   <Power size={16} />
-                  <span>Cerrar aplicación y aplicar</span>
+                  <span>Cerrar aplicación únicamente</span>
                 </button>
               </div>
             </div>
@@ -210,13 +228,24 @@ export function UpdateModal({ isOpen, onClose }) {
                 <CheckCircle size={40} style={{ color: '#10b981' }} />
               </div>
               <h4 style={{ margin: '0 0 8px 0', color: 'var(--text-main)', fontSize: '1.05rem', fontWeight: 600 }}>
-                ¡Actualización aplicada!
+                ¡Actualización en proceso!
               </h4>
               <p style={{ margin: '0 0 16px 0', fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>
-                El sistema se ha cerrado y el archivo ejecutable ha sido actualizado a la última versión.
+                La aplicación anterior se está cerrando y el ejecutable está siendo actualizado a la última versión.
               </p>
               <div style={{ background: 'var(--bg-main)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '12px 14px', textAlign: 'left', fontSize: '0.84rem', color: 'var(--text-muted)', marginTop: '14px' }}>
-                💡 <strong>Siguiente paso:</strong> Ya puede hacer doble clic en <code>VerificacionPrevisional-MPFN.exe</code> desde su escritorio para iniciar la nueva versión. Puede cerrar esta pestaña del navegador.
+                💡 <strong>Nota:</strong> Si eligió reiniciar, la nueva versión se abrirá automáticamente en unos segundos. De lo contrario, puede hacer doble clic en <code>VerificacionPrevisional-MPFN.exe</code>.
+              </div>
+              <div style={{ marginTop: '18px' }}>
+                <button
+                  type="button"
+                  className="mpfn-btn mpfn-btn-secondary"
+                  onClick={handleCloseTab}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <X size={14} />
+                  <span>Cerrar esta pestaña</span>
+                </button>
               </div>
             </div>
           )}

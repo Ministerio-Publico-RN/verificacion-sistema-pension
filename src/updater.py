@@ -14,7 +14,7 @@ import subprocess
 import threading
 from paths import is_frozen
 
-CURRENT_VERSION = "1.0.17"
+CURRENT_VERSION = "1.0.18"
 GITHUB_REPO = "Ministerio-Publico-RN/verificacion-sistema-pension"
 
 
@@ -47,10 +47,20 @@ def check_for_updates():
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=8) as resp:
             if resp.status != 200:
-                return {'has_update': False, 'error': f"HTTP {resp.status}"}
+                return {
+                    'has_update': False,
+                    'current_version': CURRENT_VERSION,
+                    'latest_version': CURRENT_VERSION,
+                    'error': f"HTTP {resp.status}"
+                }
             data = json.loads(resp.read().decode('utf-8'))
     except Exception as e:
-        return {'has_update': False, 'error': str(e)}
+        return {
+            'has_update': False,
+            'current_version': CURRENT_VERSION,
+            'latest_version': CURRENT_VERSION,
+            'error': str(e)
+        }
 
     latest_tag = data.get('tag_name', '')
     latest_version = parse_version(latest_tag)
@@ -72,7 +82,7 @@ def check_for_updates():
     return {
         'has_update': has_update,
         'current_version': CURRENT_VERSION,
-        'latest_version': latest_tag.lstrip('vV'),
+        'latest_version': latest_tag.lstrip('vV') or CURRENT_VERSION,
         'release_name': data.get('name', latest_tag),
         'release_notes': data.get('body', ''),
         'download_url': download_url,
@@ -183,27 +193,26 @@ def check_and_apply_pending_update_on_startup():
     bat_path = os.path.join(exe_dir, "_startup_swap.bat")
     log_path = os.path.join(exe_dir, "updater.log")
 
-    bat_content = f"""@echo off
-setlocal
-set "EXE={exe_path}"
-set "UPDATE={temp_new_exe}"
-set "LOG={log_path}"
+    bat_content = """@echo off
+set "EXE=%~1"
+set "UPDATE=%~2"
+set "LOG=%~3"
 
-echo [%date% %time%] [STARTUP] Reemplazando ejecutable por actualizacion pendiente... >> "%LOG%"
-timeout /t 2 /nobreak >nul
+echo [%date% %time%] [STARTUP] Reemplazando por actualizacion pendiente... >> "%LOG%"
+ping 127.0.0.1 -n 3 >nul
 
 set attempts=0
 :loop_del
 del /f /q "%EXE%" >nul 2>&1
 if not exist "%EXE%" goto do_move
 set /a attempts+=1
-if %attempts% geq 20 goto fallback_taskkill
-timeout /t 1 /nobreak >nul
+if %attempts% geq 15 goto do_taskkill
+ping 127.0.0.1 -n 2 >nul
 goto loop_del
 
-:fallback_taskkill
-taskkill /f /im "{exe_name}" >nul 2>&1
-timeout /t 1 /nobreak >nul
+:do_taskkill
+taskkill /f /im "%~nx1" >nul 2>&1
+ping 127.0.0.1 -n 2 >nul
 del /f /q "%EXE%" >nul 2>&1
 
 :do_move
@@ -212,10 +221,10 @@ if exist "%UPDATE%" (
     echo [%date% %time%] [STARTUP] Actualizacion completada con exito. >> "%LOG%"
     start "" "%EXE%"
 ) else (
-    echo [%date% %time%] [STARTUP] Error: Archivo .update no encontrado. >> "%LOG%"
+    echo [%date% %time%] [STARTUP] Error: Archivo %UPDATE% no encontrado. >> "%LOG%"
 )
 
-del "%~f0" >nul 2>&1
+(goto) 2>nul & del "%~f0"
 """
 
     try:
@@ -232,24 +241,23 @@ del "%~f0" >nul 2>&1
             flags |= subprocess.CREATE_NO_WINDOW
 
         subprocess.Popen(
-            [comspec, '/c', bat_path],
+            [comspec, '/c', bat_path, exe_path, temp_new_exe, log_path],
             cwd=exe_dir,
             creationflags=flags,
             close_fds=True
         )
 
-        time.sleep(0.4)
-        sys.exit(0)
+        time.sleep(0.3)
+        os._exit(0)
     except Exception as e:
         sys.stderr.write(f"[UPDATER] Error en startup auto-swap: {e}\n")
         return False
 
 
-def finalize_and_exit():
+def finalize_and_exit(relaunch=False):
     """
-    Ejecuta el reemplazo del ejecutable descargado (.update -> .exe) y cierra la aplicación.
-    Utiliza un script batch nativo (cmd.exe) sin depender de PowerShell.
-    Garantiza el cierre del proceso actual.
+    Aplica el reemplazo del ejecutable descargado (.update -> .exe) y cierra la aplicación.
+    Si relaunch es True, vuelve a abrir la aplicación automáticamente tras aplicar los cambios.
     """
     if not is_frozen():
         return {'success': False, 'message': 'Solo disponible en ejecutable compilado.'}
@@ -264,39 +272,43 @@ def finalize_and_exit():
 
     bat_path = os.path.join(exe_dir, "_updater_swap.bat")
     log_path = os.path.join(exe_dir, "updater.log")
+    relaunch_flag = "1" if relaunch else "0"
 
-    bat_content = f"""@echo off
-setlocal
-set "EXE={exe_path}"
-set "UPDATE={temp_new_exe}"
-set "LOG={log_path}"
+    bat_content = """@echo off
+set "EXE=%~1"
+set "UPDATE=%~2"
+set "LOG=%~3"
+set "RELAUNCH=%~4"
 
-echo [%date% %time%] [FINALIZE] Cerrando y aplicando actualizacion... >> "%LOG%"
-timeout /t 2 /nobreak >nul
+echo [%date% %time%] [UPDATER] Iniciando actualizacion de %EXE%... >> "%LOG%"
+ping 127.0.0.1 -n 3 >nul
 
 set attempts=0
 :loop_del
 del /f /q "%EXE%" >nul 2>&1
 if not exist "%EXE%" goto do_move
 set /a attempts+=1
-if %attempts% geq 20 goto fallback_taskkill
-timeout /t 1 /nobreak >nul
+if %attempts% geq 15 goto do_taskkill
+ping 127.0.0.1 -n 2 >nul
 goto loop_del
 
-:fallback_taskkill
-taskkill /f /im "{exe_name}" >nul 2>&1
-timeout /t 1 /nobreak >nul
+:do_taskkill
+taskkill /f /im "%~nx1" >nul 2>&1
+ping 127.0.0.1 -n 2 >nul
 del /f /q "%EXE%" >nul 2>&1
 
 :do_move
 if exist "%UPDATE%" (
     move /y "%UPDATE%" "%EXE%" >> "%LOG%" 2>&1
-    echo [%date% %time%] [FINALIZE] Actualizacion aplicada con exito. >> "%LOG%"
+    echo [%date% %time%] [UPDATER] Reemplazo completado exitosamente. >> "%LOG%"
+    if "%RELAUNCH%"=="1" (
+        start "" "%EXE%"
+    )
 ) else (
-    echo [%date% %time%] [FINALIZE] Error: Archivo .update no encontrado. >> "%LOG%"
+    echo [%date% %time%] [UPDATER] Error: Archivo %UPDATE% no existe. >> "%LOG%"
 )
 
-del "%~f0" >nul 2>&1
+(goto) 2>nul & del "%~f0"
 """
 
     try:
@@ -313,7 +325,7 @@ del "%~f0" >nul 2>&1
             flags |= subprocess.CREATE_NO_WINDOW
 
         subprocess.Popen(
-            [comspec, '/c', bat_path],
+            [comspec, '/c', bat_path, exe_path, temp_new_exe, log_path, relaunch_flag],
             cwd=exe_dir,
             creationflags=flags,
             close_fds=True
@@ -323,13 +335,13 @@ del "%~f0" >nul 2>&1
 
     # SIEMPRE ejecutar salida retardada para garantizar que el proceso y terminal se cierren
     def _delayed_exit():
-        time.sleep(0.5)
+        time.sleep(0.4)
         os._exit(0)
 
     threading.Thread(target=_delayed_exit, daemon=True).start()
 
     return {
         'success': True,
-        'message': 'Cerrando aplicación y aplicando actualización.'
+        'message': 'Actualización en curso. La aplicación se cerrará.'
     }
 
