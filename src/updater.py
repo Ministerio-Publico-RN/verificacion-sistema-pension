@@ -14,7 +14,7 @@ import subprocess
 import threading
 from paths import is_frozen
 
-CURRENT_VERSION = "1.0.16"
+CURRENT_VERSION = "1.0.17"
 GITHUB_REPO = "Ministerio-Publico-RN/verificacion-sistema-pension"
 
 
@@ -147,9 +147,109 @@ def apply_update(download_url=None):
     }
 
 
+def check_and_apply_pending_update_on_startup():
+    """
+    Verifica al inicio del programa si existe un archivo de actualización pendiente (.exe.update).
+    Si existe y es válido, ejecuta un proceso detached para reemplazar el ejecutable actual y
+    relanzar la nueva versión, cerrando este proceso inmediatamente.
+    """
+    if not is_frozen():
+        return False
+
+    exe_path = os.path.abspath(sys.executable)
+    exe_dir = os.path.dirname(exe_path)
+    exe_name = os.path.basename(exe_path)
+    temp_new_exe = os.path.join(exe_dir, f"{exe_name}.update")
+
+    if not os.path.exists(temp_new_exe):
+        return False
+
+    try:
+        if os.path.getsize(temp_new_exe) < 5 * 1024 * 1024:
+            try:
+                os.remove(temp_new_exe)
+            except Exception:
+                pass
+            return False
+    except Exception:
+        return False
+
+    print("===========================================================")
+    print(" [ACTUALIZACIÓN PENDIENTE DETECTADA]")
+    print(" Se encontró una versión descargada lista para instalar.")
+    print(" Aplicando actualización y reiniciando el sistema...")
+    print("===========================================================")
+
+    bat_path = os.path.join(exe_dir, "_startup_swap.bat")
+    log_path = os.path.join(exe_dir, "updater.log")
+
+    bat_content = f"""@echo off
+setlocal
+set "EXE={exe_path}"
+set "UPDATE={temp_new_exe}"
+set "LOG={log_path}"
+
+echo [%date% %time%] [STARTUP] Reemplazando ejecutable por actualizacion pendiente... >> "%LOG%"
+timeout /t 2 /nobreak >nul
+
+set attempts=0
+:loop_del
+del /f /q "%EXE%" >nul 2>&1
+if not exist "%EXE%" goto do_move
+set /a attempts+=1
+if %attempts% geq 20 goto fallback_taskkill
+timeout /t 1 /nobreak >nul
+goto loop_del
+
+:fallback_taskkill
+taskkill /f /im "{exe_name}" >nul 2>&1
+timeout /t 1 /nobreak >nul
+del /f /q "%EXE%" >nul 2>&1
+
+:do_move
+if exist "%UPDATE%" (
+    move /y "%UPDATE%" "%EXE%" >> "%LOG%" 2>&1
+    echo [%date% %time%] [STARTUP] Actualizacion completada con exito. >> "%LOG%"
+    start "" "%EXE%"
+) else (
+    echo [%date% %time%] [STARTUP] Error: Archivo .update no encontrado. >> "%LOG%"
+)
+
+del "%~f0" >nul 2>&1
+"""
+
+    try:
+        with open(bat_path, 'w', encoding='latin-1', errors='replace') as f:
+            f.write(bat_content)
+
+        comspec = os.environ.get('COMSPEC', r'C:\Windows\System32\cmd.exe')
+        flags = 0
+        if hasattr(subprocess, 'CREATE_NEW_PROCESS_GROUP'):
+            flags |= subprocess.CREATE_NEW_PROCESS_GROUP
+        if hasattr(subprocess, 'DETACHED_PROCESS'):
+            flags |= subprocess.DETACHED_PROCESS
+        if hasattr(subprocess, 'CREATE_NO_WINDOW'):
+            flags |= subprocess.CREATE_NO_WINDOW
+
+        subprocess.Popen(
+            [comspec, '/c', bat_path],
+            cwd=exe_dir,
+            creationflags=flags,
+            close_fds=True
+        )
+
+        time.sleep(0.4)
+        sys.exit(0)
+    except Exception as e:
+        sys.stderr.write(f"[UPDATER] Error en startup auto-swap: {e}\n")
+        return False
+
+
 def finalize_and_exit():
     """
-    Ejecuta el script de reemplazo del ejecutable tras el cierre del programa y termina el proceso actual.
+    Ejecuta el reemplazo del ejecutable descargado (.update -> .exe) y cierra la aplicación.
+    Utiliza un script batch nativo (cmd.exe) sin depender de PowerShell.
+    Garantiza el cierre del proceso actual.
     """
     if not is_frozen():
         return {'success': False, 'message': 'Solo disponible en ejecutable compilado.'}
@@ -162,79 +262,74 @@ def finalize_and_exit():
     if not os.path.exists(temp_new_exe):
         return {'success': False, 'message': 'No se encontró el archivo de actualización descargado.'}
 
-    safe_exe_path = exe_path.replace("'", "''")
-    safe_temp_exe = temp_new_exe.replace("'", "''")
-    log_path = os.path.join(exe_dir, "updater.log").replace("'", "''")
-    ps1_path = os.path.join(exe_dir, "_updater_swap.ps1")
+    bat_path = os.path.join(exe_dir, "_updater_swap.bat")
+    log_path = os.path.join(exe_dir, "updater.log")
 
-    ps1_content = f"""# Script de reemplazo post-cierre MPFN
-$ErrorActionPreference = 'SilentlyContinue'
-$log = '{log_path}'
+    bat_content = f"""@echo off
+setlocal
+set "EXE={exe_path}"
+set "UPDATE={temp_new_exe}"
+set "LOG={log_path}"
 
-function Log-Msg($msg) {{
-    $ts = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-    "[$ts] $msg" | Out-File -FilePath $log -Append -Encoding utf8
-}}
+echo [%date% %time%] [FINALIZE] Cerrando y aplicando actualizacion... >> "%LOG%"
+timeout /t 2 /nobreak >nul
 
-Log-Msg "Iniciando reemplazo de archivo tras cierre de la aplicacion..."
-Start-Sleep -Seconds 1
+set attempts=0
+:loop_del
+del /f /q "%EXE%" >nul 2>&1
+if not exist "%EXE%" goto do_move
+set /a attempts+=1
+if %attempts% geq 20 goto fallback_taskkill
+timeout /t 1 /nobreak >nul
+goto loop_del
 
-$attempts = 0
-while ($attempts -lt 30) {{
-    $attempts++
-    try {{
-        if (Test-Path '{safe_exe_path}') {{
-            Remove-Item -Path '{safe_exe_path}' -Force -ErrorAction Stop
-        }}
-        Log-Msg "Ejecutable anterior eliminado."
-        break
-    }} catch {{
-        Start-Sleep -Seconds 1
-    }}
-}}
+:fallback_taskkill
+taskkill /f /im "{exe_name}" >nul 2>&1
+timeout /t 1 /nobreak >nul
+del /f /q "%EXE%" >nul 2>&1
 
-try {{
-    Move-Item -Path '{safe_temp_exe}' -Destination '{safe_exe_path}' -Force -ErrorAction Stop
-    Log-Msg "Actualizacion completada exitosamente en {safe_exe_path}."
-}} catch {{
-    Log-Msg "Error al mover archivo: $_"
-}}
+:do_move
+if exist "%UPDATE%" (
+    move /y "%UPDATE%" "%EXE%" >> "%LOG%" 2>&1
+    echo [%date% %time%] [FINALIZE] Actualizacion aplicada con exito. >> "%LOG%"
+) else (
+    echo [%date% %time%] [FINALIZE] Error: Archivo .update no encontrado. >> "%LOG%"
+)
 
-Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue
+del "%~f0" >nul 2>&1
 """
 
     try:
-        with open(ps1_path, 'w', encoding='utf-8') as f:
-            f.write(ps1_content)
-    except Exception as e:
-        return {'success': False, 'message': f"Error al preparar script: {e}"}
+        with open(bat_path, 'w', encoding='latin-1', errors='replace') as f:
+            f.write(bat_content)
 
-    try:
+        comspec = os.environ.get('COMSPEC', r'C:\Windows\System32\cmd.exe')
         flags = 0
         if hasattr(subprocess, 'CREATE_NEW_PROCESS_GROUP'):
             flags |= subprocess.CREATE_NEW_PROCESS_GROUP
+        if hasattr(subprocess, 'DETACHED_PROCESS'):
+            flags |= subprocess.DETACHED_PROCESS
+        if hasattr(subprocess, 'CREATE_NO_WINDOW'):
+            flags |= subprocess.CREATE_NO_WINDOW
 
         subprocess.Popen(
-            [
-                'powershell.exe',
-                '-NoProfile',
-                '-ExecutionPolicy', 'Bypass',
-                '-WindowStyle', 'Hidden',
-                '-File', ps1_path
-            ],
+            [comspec, '/c', bat_path],
             cwd=exe_dir,
-            creationflags=flags
+            creationflags=flags,
+            close_fds=True
         )
-
-        def _delayed_exit():
-            time.sleep(0.8)
-            os._exit(0)
-
-        threading.Thread(target=_delayed_exit, daemon=True).start()
-
-        return {
-            'success': True,
-            'message': 'Cerrando aplicación y aplicando actualización.'
-        }
     except Exception as e:
-        return {'success': False, 'message': f"Error al ejecutar finalizador: {e}"}
+        sys.stderr.write(f"[UPDATER] Error al spawnear helper batch: {e}\n")
+
+    # SIEMPRE ejecutar salida retardada para garantizar que el proceso y terminal se cierren
+    def _delayed_exit():
+        time.sleep(0.5)
+        os._exit(0)
+
+    threading.Thread(target=_delayed_exit, daemon=True).start()
+
+    return {
+        'success': True,
+        'message': 'Cerrando aplicación y aplicando actualización.'
+    }
+

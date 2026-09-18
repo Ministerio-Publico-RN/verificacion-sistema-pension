@@ -63,6 +63,18 @@ def sanitize_sbs_name(name_str):
     return s.upper()
 
 
+def get_powershell_cmd():
+    import shutil
+    ps = shutil.which('powershell')
+    if ps:
+        return ps
+    sys_root = os.environ.get('SystemRoot', r'C:\Windows')
+    ps_def = os.path.join(sys_root, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+    if os.path.exists(ps_def):
+        return ps_def
+    return None
+
+
 def kill_marked_chromium():
     """Cierra de inmediato, a nivel de sistema operativo, todos los procesos chrome.exe
     lanzados por este servicio (identificados por MPFN_KILL_MARKER).
@@ -70,6 +82,9 @@ def kill_marked_chromium():
     if sys.platform != 'win32':
         return
     try:
+        ps_cmd = get_powershell_cmd()
+        if not ps_cmd:
+            return
         import base64
         ps_script = (
             "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | "
@@ -78,7 +93,7 @@ def kill_marked_chromium():
         )
         b64 = base64.b64encode(ps_script.encode('utf-16le')).decode('ascii')
         subprocess.run(
-            ['powershell', '-NoProfile', '-NonInteractive', '-EncodedCommand', b64],
+            [ps_cmd, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', b64],
             timeout=8, capture_output=True
         )
     except Exception as e:
@@ -92,6 +107,9 @@ def send_marked_windows_to_back():
     if sys.platform != 'win32':
         return
     try:
+        ps_cmd = get_powershell_cmd()
+        if not ps_cmd:
+            return
         import ctypes
         import base64
 
@@ -102,7 +120,7 @@ def send_marked_windows_to_back():
         )
         b64 = base64.b64encode(ps_script.encode('utf-16le')).decode('ascii')
         result = subprocess.run(
-            ['powershell', '-NoProfile', '-NonInteractive', '-EncodedCommand', b64],
+            [ps_cmd, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', b64],
             timeout=6, capture_output=True, text=True
         )
         pids = {int(p) for p in result.stdout.split() if p.strip().isdigit()}
@@ -156,6 +174,7 @@ class SBSWorkerThread(threading.Thread):
         self.page = None
         self.is_ready = False
         self.current_headless = None
+        self.driver_pid = None
 
     def get_headless(self):
         if self.manager and hasattr(self.manager, 'headless'):
@@ -170,6 +189,12 @@ class SBSWorkerThread(threading.Thread):
 
             if not self.playwright:
                 self.playwright = sync_playwright().start()
+                try:
+                    proc = getattr(self.playwright._impl_obj._connection._transport, '_proc', None)
+                    if proc and proc.pid:
+                        self.driver_pid = proc.pid
+                except Exception:
+                    pass
             
             pos = get_window_position(self.worker_id)
             win_args = [
@@ -1073,6 +1098,19 @@ class SBSServiceManager:
             for w in self.workers:
                 w.interrupted = True
                 w.running = False
+                pid = getattr(w, 'driver_pid', None)
+                if not pid and w.playwright and hasattr(w.playwright, '_impl_obj'):
+                    try:
+                        proc = getattr(w.playwright._impl_obj._connection._transport, '_proc', None)
+                        if proc and proc.pid:
+                            pid = proc.pid
+                    except Exception:
+                        pass
+                if pid:
+                    try:
+                        subprocess.run(f'taskkill /F /T /PID {pid}', shell=True, capture_output=True)
+                    except Exception:
+                        pass
 
         kill_marked_chromium()
 

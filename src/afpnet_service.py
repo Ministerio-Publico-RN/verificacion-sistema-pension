@@ -237,6 +237,12 @@ class AfpnetServiceManager:
             if not self.is_browser_alive():
                 if not self.playwright:
                     self.playwright = sync_playwright().start()
+                    try:
+                        proc = getattr(self.playwright._impl_obj._connection._transport, '_proc', None)
+                        if proc and proc.pid:
+                            self.driver_pid = proc.pid
+                    except Exception:
+                        pass
                 self.browser = self.playwright.chromium.launch(
                     headless=headless,
                     slow_mo=100 if not headless else 0,
@@ -342,11 +348,18 @@ class AfpnetServiceManager:
         except Exception:
             pass
         finally:
+            if hasattr(self, 'driver_pid') and self.driver_pid:
+                try:
+                    import subprocess
+                    subprocess.run(f'taskkill /F /T /PID {self.driver_pid}', shell=True, capture_output=True)
+                except Exception:
+                    pass
             self.page = None
             self.context = None
             self.browser = None
             self.playwright = None
             self.is_logged_in = False
+            self.driver_pid = None
 
 def get_afpnet_service():
     return AfpnetServiceManager.get_instance()

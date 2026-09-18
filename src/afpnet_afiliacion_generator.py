@@ -9,7 +9,6 @@ import sys
 import json
 import re
 import unicodedata
-import subprocess
 from datetime import datetime
 
 try:
@@ -175,42 +174,33 @@ def generate_afiliacion_excel(workers, output_path=None):
     """
     Genera el archivo .xls en formato oficial Carga_Masiva_Ejemplo_Empl.xls
     insertando los trabajadores en la hoja 'Excel' a partir de la fila 4.
+    Utiliza manipulación directa con xlrd y xlutils sin dependencias de PowerShell ni Excel.
     """
     if not workers:
         raise ValueError("No hay trabajadores para generar el reporte de afiliación.")
 
-    # 1. Ubicar la plantilla
+    # 1. Ubicar la plantilla oficial en posibles rutas relativas y de PyInstaller
     candidates = [
         resource_path('docs', 'templates', 'Carga_Masiva_Ejemplo_Empl.xls'),
         resource_path('docs', 'archivos_pruebas', 'Carga_Masiva_Ejemplo_Empl.xls'),
+        resource_path('templates', 'Carga_Masiva_Ejemplo_Empl.xls'),
+        resource_path('Carga_Masiva_Ejemplo_Empl.xls'),
+        data_path('docs', 'templates', 'Carga_Masiva_Ejemplo_Empl.xls'),
+        data_path('Carga_Masiva_Ejemplo_Empl.xls'),
         os.path.join(os.path.dirname(__file__), '..', 'docs', 'templates', 'Carga_Masiva_Ejemplo_Empl.xls'),
+        os.path.join(os.path.dirname(__file__), 'Carga_Masiva_Ejemplo_Empl.xls'),
         'D:\\Descargas\\Carga_Masiva_Ejemplo_Empl.xls'
     ]
     template_path = None
     for c in candidates:
-        if os.path.exists(c):
+        if c and os.path.exists(c):
             template_path = os.path.abspath(c)
             break
 
     if not template_path:
-        raise FileNotFoundError("No se encontró la plantilla oficial Carga_Masiva_Ejemplo_Empl.xls")
+        raise FileNotFoundError("No se encontró la plantilla oficial Carga_Masiva_Ejemplo_Empl.xls en el sistema.")
 
-    # 2. Ubicar el script de PowerShell
-    ps_candidates = [
-        resource_path('src', 'populate_afiliacion.ps1'),
-        resource_path('populate_afiliacion.ps1'),
-        os.path.join(os.path.dirname(__file__), 'populate_afiliacion.ps1')
-    ]
-    ps_script = None
-    for p in ps_candidates:
-        if os.path.exists(p):
-            ps_script = os.path.abspath(p)
-            break
-
-    if not ps_script:
-        raise FileNotFoundError("No se encontró el script populate_afiliacion.ps1")
-
-    # 3. Preparar ruta de salida
+    # 2. Preparar ruta de salida
     if not output_path:
         uploads_dir = data_path('uploads')
         os.makedirs(uploads_dir, exist_ok=True)
@@ -218,35 +208,25 @@ def generate_afiliacion_excel(workers, output_path=None):
         output_path = os.path.join(uploads_dir, f"Carga_Masiva_Afiliacion_AFPnet_{timestamp}.xls")
     output_path = os.path.abspath(output_path)
 
-    # 4. Convertir trabajadores a matriz de 18 columnas
-    matrix = [worker_to_row(w) for w in workers]
+    # 3. Leer la plantilla preservando todas sus 5 hojas y formatos
+    import xlrd
+    from xlutils.copy import copy
 
-    temp_json = os.path.join(os.path.dirname(output_path), f"temp_afiliacion_{os.getpid()}.json")
-    try:
-        with open(temp_json, 'w', encoding='utf-8') as f:
-            json.dump(matrix, f, ensure_ascii=False)
+    rb = xlrd.open_workbook(template_path, formatting_info=True)
+    wb = copy(rb)
+    sheet = wb.get_sheet(0)
 
-        cmd = [
-            'powershell',
-            '-ExecutionPolicy', 'Bypass',
-            '-File', ps_script,
-            '-TemplatePath', template_path,
-            '-DataJsonPath', temp_json,
-            '-OutputPath', output_path
-        ]
+    # 4. Insertar filas de trabajadores a partir de la fila 4 (índice 3 en base cero)
+    for row_idx, w in enumerate(workers):
+        target_row = 3 + row_idx
+        row_cells = worker_to_row(w)
+        for col_idx, val in enumerate(row_cells):
+            sheet.write(target_row, col_idx, str(val) if val is not None else '')
 
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
-        if res.returncode != 0:
-            err_msg = (res.stderr or res.stdout or 'Error desconocido de COM').strip()
-            raise RuntimeError(f"Fallo en generación Excel COM: {err_msg}")
+    # 5. Guardar archivo final
+    wb.save(output_path)
 
-        if not os.path.exists(output_path) or os.path.getsize(output_path) < 1000:
-            raise RuntimeError(f"El archivo generado no es válido o está vacío.")
+    if not os.path.exists(output_path) or os.path.getsize(output_path) < 1000:
+        raise RuntimeError("El archivo generado no es válido o está vacío.")
 
-        return output_path
-    finally:
-        if os.path.exists(temp_json):
-            try:
-                os.remove(temp_json)
-            except Exception:
-                pass
+    return output_path

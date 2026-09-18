@@ -617,6 +617,7 @@ def run_server(port=8080, open_browser=False):
         httpd.server_close()
 
 if __name__ == '__main__':
+    updater.check_and_apply_pending_update_on_startup()
     port = 8080
     if len(sys.argv) > 1 and sys.argv[1].isdigit():
         port = int(sys.argv[1])

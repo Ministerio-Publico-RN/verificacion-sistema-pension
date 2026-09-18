@@ -48,7 +48,7 @@ Write-Host "== 2/3 Instalando dependencias de Python para el build ==" -Foregrou
 # que reintentar arregle -- ver el mensaje de error al final del script.
 $pipArgs = @('--default-timeout=120', '--retries', '8')
 Invoke-Step "  - Actualizando pip" { python -m pip install --upgrade pip @pipArgs }
-Invoke-Step "  - Instalando requirements.txt (playwright, openpyxl)" { python -m pip install @pipArgs -r "$root/requirements.txt" }
+Invoke-Step "  - Instalando requirements.txt (playwright, openpyxl, xlrd, xlwt, xlutils)" { python -m pip install @pipArgs -r "$root/requirements.txt" }
 Invoke-Step "  - Instalando pyinstaller" { python -m pip install @pipArgs pyinstaller }
 
 Push-Location $root
@@ -62,7 +62,7 @@ try {
             --console `
             --add-data "web;web" `
             --add-data "docs;docs" `
-            --add-data "src/populate_afiliacion.ps1;src" `
+            --add-data "docs/templates/Carga_Masiva_Ejemplo_Empl.xls;docs/templates" `
             --add-data "src/ubigeos_afpnet.json;src" `
             --collect-all playwright `
             --paths src `
