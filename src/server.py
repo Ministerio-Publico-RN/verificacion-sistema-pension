@@ -129,6 +129,8 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             self.handle_execution_create()
         elif re.match(r'^/api/executions/(\d+)/status$', path):
             self.handle_execution_status(int(re.match(r'^/api/executions/(\d+)/status$', path).group(1)))
+        elif path == '/api/afpnet/export-afiliacion':
+            self.handle_afpnet_export_afiliacion()
         elif path == '/api/app/apply-update':
             self.handle_apply_update()
         elif path == '/api/app/finalize-update':
@@ -403,6 +405,39 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             self.send_file_download(xml_data, filename)
         except Exception as e:
             self.send_json({'error': f"Error al generar plantilla AFPNET: {str(e)}"}, status=500)
+
+    def handle_afpnet_export_afiliacion(self):
+        """Genera y descarga el archivo oficial de Afiliación Masiva en formato Carga_Masiva_Ejemplo_Empl.xls"""
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else '{}'
+            params = json.loads(body) if body else {}
+            workers = params.get('workers')
+            if not workers:
+                workers = ACTIVE_STATE.get('workers', [])
+                sin_afiliados = [w for w in workers if w.get('semaforo') == 'sin_afiliacion']
+                if sin_afiliados:
+                    workers = sin_afiliados
+
+            if not workers:
+                self.send_json({'error': 'No hay trabajadores para generar el reporte de afiliación.'}, status=400)
+                return
+
+            from afpnet_afiliacion_generator import generate_afiliacion_excel
+            output_file = generate_afiliacion_excel(workers)
+
+            with open(output_file, 'rb') as f:
+                file_bytes = f.read()
+
+            filename = os.path.basename(output_file)
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/vnd.ms-excel')
+            self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
+            self.send_header('Content-Length', str(len(file_bytes)))
+            self.end_headers()
+            self.wfile.write(file_bytes)
+        except Exception as e:
+            self.send_json({'error': f"Error al generar reporte oficial de afiliación: {str(e)}"}, status=500)
 
     def handle_afpnet_batches_info(self):
         """Retorna la información de lotes para AFPNET"""

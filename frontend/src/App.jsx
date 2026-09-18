@@ -26,6 +26,7 @@ export function App() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [selectedWorker, setSelectedWorker] = useState(null);
   const [isExportingCierreAltas, setIsExportingCierreAltas] = useState(false);
+  const [isExportingAfiliacion, setIsExportingAfiliacion] = useState(false);
   const [cierreAltasProgress, setCierreAltasProgress] = useState('');
 
   // Modo de verificación elegido en la pantalla inicial: null | 'altas' | 'pea'
@@ -171,20 +172,30 @@ export function App() {
     });
   };
 
-  const handleExportAfiliacion = useCallback(() => {
-    const sinAfiliados = workers.filter(w => w.semaforo === 'sin_afiliacion');
-    if (sinAfiliados.length === 0) {
-      alert('No hay registros sin afiliación previa en el padrón.');
+  const handleExportAfiliacion = useCallback(async () => {
+    let targetWorkers = workers.filter(w => w.semaforo === 'sin_afiliacion');
+    if (targetWorkers.length === 0) {
+      targetWorkers = filteredWorkers.length > 0 ? filteredWorkers : workers;
+    }
+    if (targetWorkers.length === 0) {
+      alert('No hay registros de trabajadores para generar el reporte de afiliación.');
       return;
     }
-    exportAfiliacionReport(sinAfiliados);
-    addLog({
-      id: Date.now(),
-      time: new Date().toLocaleTimeString('es-PE', { hour12: false }),
-      message: `Reporte oficial de afiliación descargado para ${sinAfiliados.length} trabajadores sin afiliación previa.`,
-      type: 'success'
-    });
-  }, [workers, addLog]);
+    setIsExportingAfiliacion(true);
+    try {
+      const ok = await exportAfiliacionReport(targetWorkers);
+      if (ok) {
+        addLog({
+          id: Date.now(),
+          time: new Date().toLocaleTimeString('es-PE', { hour12: false }),
+          message: `Reporte oficial de afiliación AFPnet generado exitosamente con ${targetWorkers.length} registros.`,
+          type: 'success'
+        });
+      }
+    } finally {
+      setIsExportingAfiliacion(false);
+    }
+  }, [workers, filteredWorkers, addLog]);
 
   const handleExportCierreAltas = useCallback(async () => {
     const targetWorkers = filteredWorkers.length > 0 ? filteredWorkers : workers;
@@ -467,6 +478,7 @@ export function App() {
               onSelectWorker={setSelectedWorker}
               onExport={handleExport}
               onExportAfiliacion={handleExportAfiliacion}
+              isExportingAfiliacion={isExportingAfiliacion}
               onExportCierreAltas={handleExportCierreAltas}
               isExportingCierreAltas={isExportingCierreAltas}
               cierreAltasProgress={cierreAltasProgress}

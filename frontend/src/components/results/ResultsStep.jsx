@@ -34,6 +34,7 @@ export function ResultsStep({
   onSelectWorker,
   onExport,
   onExportAfiliacion,
+  isExportingAfiliacion = false,
   onExportCierreAltas,
   isExportingCierreAltas = false,
   cierreAltasProgress = '',
@@ -164,11 +165,21 @@ export function ResultsStep({
             <button
               className="mpfn-btn-primary mpfn-btn-afiliacion-report"
               onClick={onExportAfiliacion}
+              disabled={isExportingAfiliacion}
               title="Descargar reporte de afiliación con formato oficial para trabajadores sin afiliación previa"
               type="button"
             >
-              <Download size={15} />
-              <span>Reporte Afiliación ({sinAfiliacion})</span>
+              {isExportingAfiliacion ? (
+                <>
+                  <RotateCw size={15} className="animate-spin" />
+                  <span>Generando Excel ({sinAfiliacion})...</span>
+                </>
+              ) : (
+                <>
+                  <Download size={15} />
+                  <span>Reporte Afiliación ({sinAfiliacion})</span>
+                </>
+              )}
             </button>
 
             {/* Botón Reporte del SPP (SBS) (Word con Ficha SBS) */}

@@ -62,6 +62,8 @@ try {
             --console `
             --add-data "web;web" `
             --add-data "docs;docs" `
+            --add-data "src/populate_afiliacion.ps1;src" `
+            --add-data "src/ubigeos_afpnet.json;src" `
             --collect-all playwright `
             --paths src `
             src/server.py
