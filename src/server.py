@@ -354,6 +354,16 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
                     f.write(file_data)
 
                 records = SigaParser.parse_file(save_path, origen=origen)
+                if not records:
+                    self.send_json({
+                        'error': f"El archivo '{filename}' no es compatible. No contiene registros con números de documento (DNI) válidos ni las columnas esperadas para Altas o PEA.",
+                        'filename': filename,
+                        'compatible': False,
+                        'total': 0,
+                        'workers': []
+                    }, status=400)
+                    return
+
                 ACTIVE_STATE['workers'] = records
                 self.send_json({
                     'success': True,
@@ -366,7 +376,7 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             else:
                 self.send_json({'error': 'Tipo de contenido no soportado. Use multipart/form-data'}, status=400)
         except Exception as e:
-            self.send_json({'error': f"Error al procesar archivo: {str(e)}"}, status=500)
+            self.send_json({'error': f"El archivo subido no es compatible o está dañado: {str(e)}"}, status=400)
 
     def handle_afpnet_download_template(self, query_str):
         """Genera y descarga la plantilla XLS oficial de AFPNET para la nómina actual"""

@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
-import { UploadCloud, CheckCircle2, Loader2, ArrowRight, RotateCw } from 'lucide-react';
+import { UploadCloud, CheckCircle2, Loader2, ArrowRight, RotateCw, HelpCircle } from 'lucide-react';
 import { uploadSigaFile } from '../../api/sigaApi';
+import { IncompatibleFileModal } from '../modals/IncompatibleFileModal';
 
 const CATEGORIES = [
   { code: 'PENSIONISTAS', label: 'Pensionistas' },
@@ -25,7 +26,7 @@ const REGIME_OPTIONS = [
 
 const ALL_REGIME_KEYS = REGIME_OPTIONS.map(r => r.code);
 
-function CategoryCard({ code, label, state, onFile }) {
+function CategoryCard({ code, label, state, onFile, onOpenIncompatible }) {
   const inputRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
   const status = state?.status || 'idle';
@@ -65,7 +66,33 @@ function CategoryCard({ code, label, state, onFile }) {
         </p>
       )}
       {status === 'loading' && <p className="mpfn-pea-card-meta">Procesando...</p>}
-      {status === 'error' && <p className="mpfn-pea-card-error">{state.error}</p>}
+      {status === 'error' && (
+        <div>
+          <p className="mpfn-pea-card-error">{state.error}</p>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenIncompatible?.(state.fileName, state.error);
+            }}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#c5a059',
+              fontSize: '0.75rem',
+              textDecoration: 'underline',
+              cursor: 'pointer',
+              padding: '0.2rem 0',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '3px',
+              margin: '0.35rem auto 0 auto'
+            }}
+          >
+            <HelpCircle size={12} /> Ver formato requerido
+          </button>
+        </div>
+      )}
       {status === 'idle' && <p className="mpfn-pea-card-meta">Arrastre el archivo o haga clic para examinar</p>}
       {status === 'loaded' && (
         <span className="mpfn-pea-card-retry">
@@ -79,6 +106,7 @@ function CategoryCard({ code, label, state, onFile }) {
 export function PeaMultiUpload({ onContinue }) {
   const [files, setFiles] = useState({});
   const [selectedRegimes, setSelectedRegimes] = useState(() => new Set(ALL_REGIME_KEYS));
+  const [incompatibleModal, setIncompatibleModal] = useState({ open: false, filename: '', error: '' });
 
   const toggleRegime = (code) => {
     setSelectedRegimes(prev => {
@@ -102,10 +130,14 @@ export function PeaMultiUpload({ onContinue }) {
           [code]: { status: 'loaded', fileName: file.name, total: res.workers.length, workers: res.workers }
         }));
       } else {
-        setFiles(prev => ({ ...prev, [code]: { status: 'error', error: 'El archivo no contiene registros válidos.' } }));
+        const msg = 'El archivo no contiene registros compatibles con las columnas de PEA (DNI, REGI_PENS_, CODI_AFPS_).';
+        setFiles(prev => ({ ...prev, [code]: { status: 'error', error: msg, fileName: file.name } }));
+        setIncompatibleModal({ open: true, filename: file.name, error: msg });
       }
     } catch (err) {
-      setFiles(prev => ({ ...prev, [code]: { status: 'error', error: err.message || 'Error al procesar el archivo.' } }));
+      const msg = err.message || 'Error al procesar el archivo. No coincide con la estructura requerida.';
+      setFiles(prev => ({ ...prev, [code]: { status: 'error', error: msg, fileName: file.name } }));
+      setIncompatibleModal({ open: true, filename: file.name, error: msg });
     }
   };
 
@@ -146,6 +178,7 @@ export function PeaMultiUpload({ onContinue }) {
             label={cat.label}
             state={files[cat.code]}
             onFile={(file) => handleFile(cat.code, file)}
+            onOpenIncompatible={(fn, err) => setIncompatibleModal({ open: true, filename: fn || '', error: err || '' })}
           />
         ))}
       </div>
@@ -193,6 +226,14 @@ export function PeaMultiUpload({ onContinue }) {
           Continuar ({filteredTotal} registros) <ArrowRight size={15} />
         </button>
       </div>
+
+      <IncompatibleFileModal
+        isOpen={incompatibleModal.open}
+        onClose={() => setIncompatibleModal(prev => ({ ...prev, open: false }))}
+        filename={incompatibleModal.filename}
+        errorDetails={incompatibleModal.error}
+        initialTab="pea"
+      />
     </div>
   );
 }

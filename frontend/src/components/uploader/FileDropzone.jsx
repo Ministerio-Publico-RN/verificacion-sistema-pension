@@ -1,11 +1,13 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, FileSpreadsheet, Trash2, Database, Loader2 } from 'lucide-react';
-import { uploadSigaFile, fetchSampleData } from '../../api/sigaApi';
+import { UploadCloud, FileSpreadsheet, Trash2, Loader2, AlertTriangle, HelpCircle } from 'lucide-react';
+import { uploadSigaFile } from '../../api/sigaApi';
+import { IncompatibleFileModal } from '../modals/IncompatibleFileModal';
 
 export function FileDropzone({ onDataLoaded, onClear, fileName, fileMeta }) {
   const [isDragging, setIsDragging] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [modalState, setModalState] = useState({ open: false, filename: '', error: '' });
   const fileInputRef = useRef(null);
 
   const processFile = async (file) => {
@@ -18,28 +20,17 @@ export function FileDropzone({ onDataLoaded, onClear, fileName, fileMeta }) {
       if (res.workers && res.workers.length > 0) {
         onDataLoaded(res.workers, file.name, `${res.workers.length} registros cargados`);
       } else {
-        setErrorMsg('El archivo no contiene registros o no se pudieron leer las columnas.');
+        const msg = 'El archivo subido no contiene registros válidos o las columnas requeridas.';
+        setErrorMsg(msg);
+        setModalState({ open: true, filename: file.name, error: msg });
       }
     } catch (err) {
-      setErrorMsg(err.message || 'Error al procesar el archivo');
+      const msg = err.message || 'El archivo subido no es compatible con la estructura requerida.';
+      setErrorMsg(msg);
+      setModalState({ open: true, filename: file.name, error: msg });
     } finally {
       setIsLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  const handleSample = async () => {
-    setIsLoading(true);
-    setErrorMsg('');
-    try {
-      const res = await fetchSampleData();
-      if (res.workers && res.workers.length > 0) {
-        onDataLoaded(res.workers, res.filename || 'altas cas set 2026.DBF', `${res.workers.length} registros (Muestra)`);
-      }
-    } catch (err) {
-      setErrorMsg('No se pudo cargar la muestra de prueba.');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -115,18 +106,35 @@ export function FileDropzone({ onDataLoaded, onClear, fileName, fileMeta }) {
               >
                 Examinar Archivo
               </button>
-              <button
-                className="mpfn-btn-secondary mpfn-btn-lg"
-                onClick={handleSample}
-                type="button"
-              >
-                <Database size={16} /> Cargar Muestra
-              </button>
             </div>
           </>
         )}
       </div>
-      {errorMsg && <div className="mpfn-alert-error">{errorMsg}</div>}
+
+      {errorMsg && (
+        <div className="mpfn-alert-error" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <AlertTriangle size={18} style={{ flexShrink: 0, color: '#dc3545' }} />
+            <span>{errorMsg}</span>
+          </div>
+          <button
+            type="button"
+            className="mpfn-btn-outline"
+            onClick={() => setModalState(prev => ({ ...prev, open: true }))}
+            style={{ fontSize: '0.8rem', padding: '0.3rem 0.75rem', borderColor: 'rgba(220,53,69,0.5)', color: '#ffb3b8' }}
+          >
+            <HelpCircle size={14} /> Ver formato y cambios requeridos
+          </button>
+        </div>
+      )}
+
+      <IncompatibleFileModal
+        isOpen={modalState.open}
+        onClose={() => setModalState(prev => ({ ...prev, open: false }))}
+        filename={modalState.filename}
+        errorDetails={modalState.error}
+        initialTab="altas"
+      />
     </div>
   );
 }
